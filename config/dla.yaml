@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# DLA Suite — main configuration.
+#
+# Every value here can be overridden by an environment variable of the same
+# name in SCREAMING_SNAKE_CASE prefixed with DLA_, e.g.
+#
+#     paths.workspace   ->  DLA_WORKSPACE
+#     server.port       ->  DLA_SERVER_PORT
+#     run.profile       ->  DLA_RUN_PROFILE
+#
+# so a deployment never has to edit this file.  Point DLA_CONFIG at a different
+# YAML file to replace it wholesale; values not present there fall back to the
+# defaults below.
+# ---------------------------------------------------------------------------
+
+paths:
+  # Relative paths are resolved against the repository root (DLA_ROOT).
+
+  # Large, shared, and never in git: per-system virtualenvs, model weights and
+  # cloned upstream repositories.  These are created by `make setup` and are
+  # shared by every job — only outputs are per-job.
+  assets: assets
+  envs: assets/envs
+  models: assets/models
+  repositories: assets/repositories
+
+  # Default corpus and default workspace for corpus runs.
+  corpus: samples
+  workspace: benchmark
+
+  # Runtime data for the web application: uploads and one workspace per job.
+  data: data
+
+  # Hugging Face cache.  Mount a shared, pre-populated cache here to avoid
+  # re-downloading weights on every machine.
+  hf_cache: /hf-cache
+
+render:
+  # 300 dpi is the primary rendering every metric and every visual is computed
+  # against; 150 dpi exists because a few systems are trained at that scale.
+  dpi_primary: 300
+  dpi_secondary: 150
+
+selection:
+  # How pages are chosen from an input document.
+  #   all         — every page (what the web application uses)
+  #   stratified  — quota-based sampling across layout strata
+  #   first       — the first `max_pages` pages, in order
+  mode: all
+  # Hard ceiling regardless of mode.  A 300-page report through 15 models is
+  # tens of thousands of inferences; refuse rather than appear to hang.
+  max_pages: 25
+  # Quotas used only by mode: stratified.
+  quotas:
+    dense_table_portrait: 4
+    dense_table_landscape: 3
+    three_column: 2
+    two_column_portrait: 4
+    two_column_landscape: 3
+    figure_heavy: 3
+    sparse_title_page: 2
+    graphics_dense: 2
+    single_column_portrait: 3
+    single_column_landscape: 2
+
+run:
+  # Which set of systems to execute.  See config/profiles/*.yaml.
+  profile: balanced
+  # Wall-clock ceiling for one system over the whole page set.
+  system_timeout_s: 3600
+  # A system that crashes is recorded as failed and the run continues.  Set to
+  # false to abort the whole job on the first failure.
+  continue_on_error: true
+  # Re-use existing results for a system instead of re-running it.
+  reuse_existing: true
+
+report:
+  # Body template under harness/report. viewer.html is the orbit graph plus the
+  # side-by-side comparison.
+  template: viewer.html
+  # Page images are embedded in the report as data URIs; these control size.
+  image_width: 900
+  jpeg_quality: 72
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  # Rejected above this size, before anything is written to disk.
+  max_upload_mb: 200
+  # Jobs run one at a time: the models contend for a single GPU.
+  concurrency: 1
+  # Older job workspaces beyond this count are listed but not pruned
+  # automatically — deleting evaluation output is always an explicit act.
+  retain_jobs: 50
