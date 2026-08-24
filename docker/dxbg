@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Detached exec inside the DLA container: survives the caller's shell.
+#
+#   ./docker/dxbg /work/benchmark/logs/run.log 'python -m core.runner --profile full'
+#
+# The first argument is the log file; the command's stdout and stderr go there,
+# followed by a final EXIT=<code> line so a poller can tell "still running" from
+# "finished and failed".
+set -euo pipefail
+CONTAINER="${DLA_CONTAINER:-dla}"
+MODELS_GID="$(getent group models | cut -d: -f3 || true)"
+LOG="$1"; shift
+exec docker exec -d \
+  -u "$(id -u):${MODELS_GID:-$(id -g)}" \
+  -e HOME=/work/assets/cache/home -e DLA_ROOT=/work -e PYTHONPATH=/work/harness \
+  -e HF_HOME=/hf-cache -e HUGGINGFACE_HUB_CACHE=/hf-cache/hub \
+  -e UV_CACHE_DIR=/work/assets/cache/uv -e MPLCONFIGDIR=/work/assets/cache/mpl \
+  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}" \
+  "$CONTAINER" bash -lc "{ $*; } > $LOG 2>&1; echo EXIT=\$? >> $LOG"

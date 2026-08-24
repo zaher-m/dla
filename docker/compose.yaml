@@ -1,0 +1,90 @@
+# DLA Suite.
+#
+#   docker compose --project-directory . -f docker/compose.yaml build
+#   docker compose --project-directory . -f docker/compose.yaml up -d          # UI on :8080
+#   docker compose --project-directory . -f docker/compose.yaml exec dla bash   # a shell inside it
+#
+# One service. The image is a *substrate* — system libraries, fonts, CUDA torch,
+# uv — and every model's dependencies live in a per-system virtualenv under
+# ./assets/envs on the host. That is what lets a dozen mutually incompatible
+# repositories coexist, and it means adding a model never rebuilds the image.
+#
+# Everything large is bind-mounted from the working tree and gitignored:
+#   assets/   virtualenvs, model weights, cloned upstream repositories
+#   data/     uploads and one workspace per analysis
+#   benchmark/  the default workspace for corpus runs
+name: dla-suite
+
+services:
+  dla:
+    build:
+      # Relative to the project directory (the repository root). The context is
+      # just docker/, because the image carries no project data — everything
+      # else is bind-mounted at run time.
+      context: docker
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${DLA_BASE_IMAGE:-nvcr.io/nvidia/vllm:26.02-py3}
+    image: ${DLA_IMAGE:-dla-suite:1.0}
+    container_name: ${DLA_CONTAINER:-dla}
+    restart: unless-stopped
+    command: ["serve"]
+
+    # Model inference wants shared memory and unlimited locked memory; the
+    # defaults are far too small for dataloaders and CUDA pinned buffers.
+    ipc: host
+    shm_size: ${DLA_SHM_SIZE:-16gb}
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    environment:
+      # Files created inside the container stay owned by the invoking user.
+      HOST_UID: "${HOST_UID:-1000}"
+      HOST_GID: "${HOST_GID:-1000}"
+      # A real HOME inside the tree. Set here as well as in the entrypoint so
+      # that `docker compose exec`, which bypasses the entrypoint, also gets it
+      # — otherwise tools scatter dotfiles across the repository root.
+      HOME: /work/assets/cache/home
+      XDG_CACHE_HOME: /work/assets/cache
+      # Any config key can be overridden here; see config/dla.yaml.
+      DLA_ROOT: /work
+      DLA_SERVER_PORT: "${DLA_SERVER_PORT:-8080}"
+      DLA_RUN_PROFILE: "${DLA_RUN_PROFILE:-balanced}"
+      DLA_SELECTION_MAX_PAGES: "${DLA_SELECTION_MAX_PAGES:-25}"
+      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-0}"
+      NVIDIA_VISIBLE_DEVICES: all
+      OMP_NUM_THREADS: "${OMP_NUM_THREADS:-8}"
+
+    ports:
+      - "${DLA_SERVER_PORT:-8080}:${DLA_SERVER_PORT:-8080}"
+
+    # Paths are relative to the *project directory*, which is the repository
+    # root (see --project-directory in the Makefile), not to this file.
+    volumes:
+      - ./:/work
+      # A shared Hugging Face cache is worth pointing at a real directory: the
+      # model weights are tens of gigabytes and several systems pull the same
+      # backbones. Defaults inside the tree so a fresh clone just works.
+      - ${DLA_HF_CACHE:-./assets/hf-cache}:/hf-cache
+
+    working_dir: /work
+    stdin_open: true
+    tty: true
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${DLA_SERVER_PORT:-8080}/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+    # Remove this block to run on a machine with no NVIDIA GPU; the `cpu`
+    # profile in config/profiles works without one.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

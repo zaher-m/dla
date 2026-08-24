@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Run a command inside the running DLA container as the invoking host user.
+#
+#   ./docker/dx 'python -m core.runner --list'
+#
+# The container name comes from DLA_CONTAINER (compose sets it), falling back to
+# the compose default. Group membership of the shared HF cache is preserved so
+# downloads stay readable by other users of the same cache.
+set -euo pipefail
+CONTAINER="${DLA_CONTAINER:-dla}"
+MODELS_GID="$(getent group models | cut -d: -f3 || true)"
+exec docker exec -i \
+  -u "$(id -u):${MODELS_GID:-$(id -g)}" \
+  -e HOME=/work/assets/cache/home \
+  -e DLA_ROOT=/work \
+  -e PYTHONPATH=/work/harness \
+  -e HF_HOME=/hf-cache \
+  -e HUGGINGFACE_HUB_CACHE=/hf-cache/hub \
+  -e UV_CACHE_DIR=/work/assets/cache/uv \
+  -e MPLCONFIGDIR=/work/assets/cache/mpl \
+  "$CONTAINER" bash -lc "$*"

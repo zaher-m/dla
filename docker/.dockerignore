@@ -1,0 +1,5 @@
+# The build context is this directory and the image carries no project data:
+# code, config, weights and workspaces are all bind-mounted at run time. Only
+# the entrypoint needs to be copied in.
+*
+!entrypoint.sh
