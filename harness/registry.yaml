@@ -1,0 +1,704 @@
+# ---------------------------------------------------------------------------
+# DLA benchmark system registry.
+#
+# Adding a new repo/tool = add one entry here + harness/setup/<env>.sh +
+# harness/adapters/<adapter>.py.  Nothing else in the harness changes.
+#
+# env      : virtualenv name under assets/envs (created by harness/setup/<env>.sh)
+# adapter  : module under harness/adapters (run with that env's interpreter)
+# input    : image_300dpi | image_150dpi | page_pdf
+# config   : free-form dict handed to the adapter
+# ---------------------------------------------------------------------------
+systems:
+
+  # ---------------- Layout-Parser (Detectron2 backend) -------------------
+  - id: layoutparser.publaynet_frcnn
+    repo: layout-parser
+    display: "Layout-Parser · PubLayNet Faster R-CNN R50"
+    env: detectron2
+    adapter: layoutparser_d2
+    taxonomy: publaynet
+    input: image_300dpi
+    config: {dataset: PubLayNet, arch: faster_rcnn_R_50_FPN_3x, score_thresh: 0.5}
+
+  - id: layoutparser.publaynet_mask_x101
+    repo: layout-parser
+    display: "Layout-Parser · PubLayNet Mask R-CNN X101 (masks)"
+    env: detectron2
+    adapter: layoutparser_d2
+    taxonomy: publaynet
+    input: image_300dpi
+    config: {dataset: PubLayNet, arch: mask_rcnn_X_101_32x8d_FPN_3x, score_thresh: 0.5, masks: true}
+
+  - id: layoutparser.prima_mask
+    repo: layout-parser
+    display: "Layout-Parser · PRImA Mask R-CNN R50 (masks)"
+    env: detectron2
+    adapter: layoutparser_d2
+    taxonomy: prima
+    input: image_300dpi
+    config: {dataset: PrimaLayout, arch: mask_rcnn_R_50_FPN_3x, score_thresh: 0.5, masks: true}
+
+  # ---------------- PaddleOCR (official weights, ONNX runtime) -----------
+  - id: paddleocr.pp_doclayout_plus_l
+    repo: PaddleOCR
+    display: "PaddleOCR · PP-DocLayout_plus-L"
+    env: paddle_onnx
+    adapter: paddle_layout
+    taxonomy: paddle
+    input: image_300dpi
+    config: {model: PP-DocLayout_plus-L, threshold: 0.5, layout_nms: true}
+
+  - id: paddleocr.pp_doclayout_l
+    repo: PaddleOCR
+    display: "PaddleOCR · PP-DocLayout-L"
+    env: paddle_onnx
+    adapter: paddle_layout
+    taxonomy: paddle
+    input: image_300dpi
+    config: {model: PP-DocLayout-L, threshold: 0.5, layout_nms: true}
+
+  - id: paddleocr.pp_doclayoutv2
+    repo: PaddleOCR
+    display: "PaddleOCR · PP-DocLayoutV2 (+reading order)"
+    env: paddle_onnx
+    adapter: paddle_layout
+    taxonomy: paddle
+    input: image_300dpi
+    config: {model: PP-DocLayoutV2, threshold: 0.5, layout_nms: true}
+
+  - id: paddleocr.pp_doclayoutv3
+    repo: PaddleOCR
+    display: "PaddleOCR · PP-DocLayoutV3 (official ONNX)"
+    env: paddle_onnx
+    adapter: paddle_layout
+    taxonomy: paddle
+    input: image_300dpi
+    config: {model: PP-DocLayoutV3, onnx_repo: "PaddlePaddle/PP-DocLayoutV3_onnx",
+             threshold: 0.5, layout_nms: true}
+
+  # ---------------- Docling ---------------------------------------------
+  - id: docling.heron
+    repo: docling
+    display: "Docling · layout-heron (RT-DETR)"
+    env: docling
+    adapter: docling_layout
+    taxonomy: docling
+    input: image_300dpi
+    config: {preset: layout_heron_default}
+
+  - id: docling.egret_large
+    repo: docling
+    display: "Docling · layout-egret-large"
+    env: docling
+    adapter: docling_layout
+    taxonomy: docling
+    input: image_300dpi
+    config: {preset: layout_egret_large}
+
+  - id: docling.egret_xlarge
+    repo: docling
+    display: "Docling · layout-egret-xlarge"
+    env: docling
+    adapter: docling_layout
+    taxonomy: docling
+    input: image_300dpi
+    config: {preset: layout_egret_xlarge}
+
+  # ---------------- MinerU ----------------------------------------------
+  - id: mineru.pipeline
+    repo: MinerU
+    display: "MinerU · pipeline (PP-DocLayoutV2, torch)"
+    env: mineru
+    adapter: mineru_layout
+    taxonomy: mineru
+    input: image_300dpi
+    config: {backend: pipeline}
+
+  - id: mineru.vlm
+    repo: MinerU
+    display: "MinerU · VLM 2.5 (1.2B)"
+    env: mineru
+    adapter: mineru_vlm
+    taxonomy: mineru
+    input: image_300dpi
+    config: {backend: vlm-transformers}
+
+  # ---------------- Surya ------------------------------------------------
+  - id: surya.v2_layout
+    repo: surya
+    display: "Surya 2 · VLM layout + reading order"
+    env: surya
+    adapter: surya_layout
+    taxonomy: surya
+    input: image_300dpi
+    config: {backend: transformers, dtype: bfloat16, device: cuda}
+
+  - id: surya.fast_layout
+    repo: surya
+    display: "Surya 2 · fast-layout RF-DETR + AR reading order"
+    env: surya
+    adapter: surya_fast_layout
+    taxonomy: surya
+    input: image_300dpi
+    config: {threshold: 0.4, use_order: true, device: cuda}
+
+  - id: surya.fast_layout_t25
+    repo: surya
+    display: "Surya 2 · fast-layout RF-DETR [conf 0.25]"
+    env: surya
+    adapter: surya_fast_layout
+    taxonomy: surya
+    input: image_300dpi
+    config: {threshold: 0.25, use_order: true, device: cuda}
+
+  # ---------------- DocLayout-YOLO (opendatalab) -------------------------
+  # Same architecture, four training distributions. The pair below isolates
+  # DocSynth-300K synthetic pretraining as the only changing variable.
+  - id: dly.doclaynet_pretrain
+    repo: DocLayout-YOLO
+    display: "DocLayout-YOLO · DocLayNet + DocSynth300K"
+    env: pek
+    adapter: doclayout_yolo_generic
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {repo_id: "juliozhao/DocLayout-YOLO-DocLayNet-Docsynth300K_pretrained",
+             weights: "doclayout_yolo_doclaynet_imgsz1120_docsynth_pretrain.pt",
+             img_size: 1120, conf_thres: 0.25, iou_thres: 0.45,
+             training_set: DocLayNet, docsynth_pretrained: true}
+
+  - id: dly.doclaynet_scratch
+    repo: DocLayout-YOLO
+    display: "DocLayout-YOLO · DocLayNet from scratch"
+    env: pek
+    adapter: doclayout_yolo_generic
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {repo_id: "juliozhao/DocLayout-YOLO-DocLayNet-from_scratch",
+             weights: "doclayout_yolo_doclaynet_imgsz1120_from_scratch.pt",
+             img_size: 1120, conf_thres: 0.25, iou_thres: 0.45,
+             training_set: DocLayNet, docsynth_pretrained: false}
+
+  - id: dly.d4la_pretrain
+    repo: DocLayout-YOLO
+    display: "DocLayout-YOLO · D4LA + DocSynth300K [27 cls]"
+    env: pek
+    adapter: doclayout_yolo_generic
+    taxonomy: d4la
+    input: image_300dpi
+    config: {repo_id: "juliozhao/DocLayout-YOLO-D4LA-Docsynth300K_pretrained",
+             weights: "doclayout_yolo_d4la_imgsz1600_docsynth_pretrain.pt",
+             img_size: 1600, conf_thres: 0.25, iou_thres: 0.45,
+             training_set: D4LA, docsynth_pretrained: true}
+
+  - id: dly.docstructbench_1280
+    repo: DocLayout-YOLO
+    display: "DocLayout-YOLO · DocStructBench imgsz1280 (2501)"
+    env: pek
+    adapter: doclayout_yolo_generic
+    taxonomy: pek_yolo
+    input: image_300dpi
+    config: {repo_id: "juliozhao/DocLayout-YOLO-DocStructBench-imgsz1280-2501",
+             weights: "doclayout_yolo_docstructbench_imgsz1280_2501.pt",
+             img_size: 1280, conf_thres: 0.25, iou_thres: 0.45,
+             training_set: DocStructBench, docsynth_pretrained: true}
+
+  # ---------------- SwinDocSegmenter -------------------------------------
+  - id: swindocseg.doclaynet
+    repo: SwinDocSegmenter
+    display: "SwinDocSegmenter · Swin-L + MaskDINO (DocLayNet, masks)"
+    env: swindocseg
+    adapter: swindocseg_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {config: "configs/coco/instance-segmentation/swin/config_doclay.yaml", threshold: 0.5}
+
+  # ---------------- DiT (Microsoft Document Image Transformer) -----------
+  - id: dit.publaynet_cascade
+    repo: unilm
+    display: "DiT-base · Cascade Mask R-CNN (PubLayNet)"
+    env: detectron2
+    adapter: dit_layout
+    taxonomy: publaynet
+    input: image_300dpi
+    config: {config: "publaynet_configs/cascade/cascade_dit_base.yaml", threshold: 0.5}
+
+  # ---------------- RF-DETR-DocLayout ------------------------------------
+  - id: rfdetr.doclaynet
+    repo: rfdetr-doclayout
+    display: "RF-DETR-DocLayout · DocLayNet (ONNX, 576px)"
+    env: paddle_onnx
+    adapter: rfdetr_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {conf_thres: 0.5, max_boxes: 300}
+
+  # ---------------- Dolphin ----------------------------------------------
+  - id: dolphin.layout
+    repo: Dolphin
+    display: "Dolphin v2 · stage-1 layout"
+    env: dolphin
+    adapter: dolphin_layout
+    taxonomy: dolphin
+    input: image_300dpi
+    config: {}
+
+  # ---------------- PDF-Extract-Kit --------------------------------------
+  - id: pek.doclayout_yolo
+    repo: PDF-Extract-Kit
+    display: "PDF-Extract-Kit · DocLayout-YOLO (DocStructBench)"
+    env: pek
+    adapter: pek_yolo
+    taxonomy: pek_yolo
+    input: image_300dpi
+    config: {img_size: 1024, conf_thres: 0.25, iou_thres: 0.45}
+
+  - id: pek.layoutlmv3
+    repo: PDF-Extract-Kit
+    display: "PDF-Extract-Kit · LayoutLMv3 (Cascade R-CNN)"
+    env: detectron2
+    adapter: pek_layoutlmv3
+    taxonomy: pek_yolo
+    input: image_300dpi
+    config: {}
+
+  # ---------------- Eynollah ---------------------------------------------
+  - id: eynollah.layout
+    repo: eynollah
+    display: "Eynollah · pixelwise segmentation (PAGE-XML)"
+    env: eynollah
+    adapter: eynollah_layout
+    taxonomy: eynollah
+    input: image_300dpi
+    config: {light_version: true, right_to_left: true, tables: true}
+
+  # ---------------- UniLM / LayoutLMv3 (PubLayNet) ------------------------
+  - id: unilm.layoutlmv3_publaynet
+    repo: unilm
+    display: "UniLM · LayoutLMv3 Cascade R-CNN (PubLayNet)"
+    env: detectron2
+    adapter: unilm_layoutlmv3
+    taxonomy: publaynet
+    input: image_300dpi
+    config: {}
+
+  # ---------------- YOLO-DocLayNet ---------------------------------------
+  # The x-size checkpoints are behind a paid link; these are the strongest
+  # freely published weights (repo-reported DocLayNet mAP50-95 in brackets).
+  - id: yolo_doclaynet.v26l
+    repo: yolo-doclaynet
+    display: "YOLO-DocLayNet · YOLO26-L [0.820]"
+    env: yolo
+    adapter: yolo_doclaynet
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: "yolo26l-doclaynet.pt", imgsz: 1024, conf: 0.25, iou: 0.45}
+
+  - id: yolo_doclaynet.v12l
+    repo: yolo-doclaynet
+    display: "YOLO-DocLayNet · YOLOv12-L [0.792]"
+    env: yolo
+    adapter: yolo_doclaynet
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: "yolov12l-doclaynet.pt", imgsz: 1024, conf: 0.25, iou: 0.45}
+
+  - id: yolo_doclaynet.v8x
+    repo: yolo-doclaynet
+    display: "YOLO-DocLayNet · YOLOv8-X [0.787]"
+    env: yolo
+    adapter: yolo_doclaynet
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: "yolov8x-doclaynet.pt", imgsz: 1024, conf: 0.25, iou: 0.45}
+
+  # ---------------- olmOCR ------------------------------------------------
+  - id: olmocr.layout
+    repo: olmocr
+    display: "olmOCR 2 · layout/anchor output"
+    env: olmocr
+    adapter: olmocr_layout
+    taxonomy: dolphin
+    input: page_pdf
+    config: {}
+
+  # ---------------- VGT (Vision Grid Transformer) -------------------------
+  # The OCR-assisted arm.  Excluded from most vision-only shortlists because
+  # its grid needs OCR -- but this corpus is born-digital, so the grid is read
+  # straight out of the PDF text layer at zero OCR cost and zero OCR error.
+  # The `_unk` config keeps the word geometry and destroys the token identity
+  # (upstream's own MODEL.WORDGRID.USE_UNK_TEXT), isolating what the text
+  # *content* is worth on Arabic pages whose script the English WordPiece
+  # vocabulary barely covers.
+  - id: vgt.doclaynet
+    repo: AdvancedLiterateMachinery
+    display: "VGT · DocLayNet (image + PDF text grid)"
+    env: vgt
+    adapter: vgt_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {dataset: doclaynet, weights: doclaynet_VGT_model.pth,
+             config: "Configs/cascade/doclaynet_VGT_cascade_PTM.yaml",
+             threshold: 0.5, use_unk_text: false, channel_order: RGB}
+
+  - id: vgt.doclaynet_unk
+    repo: AdvancedLiterateMachinery
+    display: "VGT · DocLayNet (word geometry only, [UNK] tokens)"
+    env: vgt
+    adapter: vgt_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {dataset: doclaynet, weights: doclaynet_VGT_model.pth,
+             config: "Configs/cascade/doclaynet_VGT_cascade_PTM.yaml",
+             threshold: 0.5, use_unk_text: true, channel_order: RGB}
+
+  - id: vgt.d4la
+    repo: AdvancedLiterateMachinery
+    display: "VGT · D4LA (image + PDF text grid)"
+    env: vgt
+    adapter: vgt_layout
+    taxonomy: d4la
+    input: image_300dpi
+    config: {dataset: d4la, weights: D4LA_VGT_model.pth,
+             config: "Configs/cascade/D4LA_VGT_cascade_PTM.yaml",
+             threshold: 0.5, use_unk_text: false, channel_order: RGB}
+
+  - id: vgt.publaynet
+    repo: AdvancedLiterateMachinery
+    display: "VGT · PubLayNet (image + PDF text grid)"
+    env: vgt
+    adapter: vgt_layout
+    taxonomy: publaynet
+    input: image_300dpi
+    config: {dataset: publaynet, weights: publaynet_VGT_model.pth,
+             config: "Configs/cascade/publaynet_VGT_cascade_PTM.yaml",
+             threshold: 0.5, use_unk_text: false, channel_order: RGB}
+
+  # ---------------- RoDLA (InternImage-XL + DINO) -------------------------
+  # The only DCNv3 backbone here. Upstream's Python 3.7 / CUDA 11.3 stack does
+  # not install on current runtimes, so mmcv-full, mmdet and the DCNv3 kernel
+  # are built from source -- see harness/setup/rodla.sh.
+  - id: rodla.doclaynet
+    repo: RoDLA
+    display: "RoDLA · InternImage-XL + DINO (DocLayNet)"
+    env: rodla
+    adapter: rodla_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: rodla_internimage_xl_doclaynet.pth,
+             config: "configs/doclaynet/rodla_internimage_xl_doclaynet.py",
+             threshold: 0.3}
+
+  # ---------------- M2Doc (DINO + multilingual text fusion) ---------------
+  # The control for VGT's confound: VGT's grid runs on an English WordPiece
+  # vocabulary that shreds Arabic into single characters, so a null result
+  # there is not conclusive.  M2Doc encodes whole text lines with
+  # bert-base-multilingual-cased, which does cover Arabic.  `_blank` keeps the
+  # line boxes and empties the strings -- the same content-vs-geometry
+  # ablation as vgt.doclaynet_unk.
+  - id: m2doc.doclaynet_dino
+    repo: M2Doc
+    display: "M2Doc · DINO-4scale + multilingual text fusion (DocLayNet)"
+    env: m2doc
+    adapter: m2doc_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: dino_w_m2doc_r50_epoch_12.pth,
+             config: "m2doc_config/dino-4scale_w_m2doc_r50_doclaynet_12epoch.py",
+             threshold: 0.3, blank_text: false}
+
+  - id: m2doc.doclaynet_dino_blank
+    repo: M2Doc
+    display: "M2Doc · DINO-4scale, line geometry only (empty strings)"
+    env: m2doc
+    adapter: m2doc_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: dino_w_m2doc_r50_epoch_12.pth,
+             config: "m2doc_config/dino-4scale_w_m2doc_r50_doclaynet_12epoch.py",
+             threshold: 0.3, blank_text: true}
+
+  - id: m2doc.doclaynet_dino_fitz
+    repo: M2Doc
+    display: "M2Doc · DINO-4scale, column-aware line segmentation"
+    env: m2doc
+    adapter: m2doc_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: dino_w_m2doc_r50_epoch_12.pth,
+             config: "m2doc_config/dino-4scale_w_m2doc_r50_doclaynet_12epoch.py",
+             threshold: 0.3, blank_text: false, line_source: pymupdf}
+
+  - id: m2doc.doclaynet_dino_fitz_blank
+    repo: M2Doc
+    display: "M2Doc · DINO-4scale, column-aware lines, empty strings"
+    env: m2doc
+    adapter: m2doc_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: dino_w_m2doc_r50_epoch_12.pth,
+             config: "m2doc_config/dino-4scale_w_m2doc_r50_doclaynet_12epoch.py",
+             threshold: 0.3, blank_text: true, line_source: pymupdf}
+
+  # ---------------- DocSAM (CVPR 2025) ------------------------------------
+  # The only system here whose class set is an *argument*: class names are
+  # embedded with all-MiniLM-L6-v2 and used as semantic queries into a
+  # Mask2Former decoder, so the taxonomy is chosen at inference time instead
+  # of being frozen into a linear head.  It is also a true segmentation model
+  # (per-instance masks + a semantic mask stack), which is the gap this
+  # benchmark still answers weakly.
+  #
+  # The four runs below are a designed ablation, not four checkpoints:
+  #   *_canonical  -- prompted with this benchmark's own canonical class names,
+  #                   so the taxonomy mapping is an identity;
+  #   *_doclaynet  -- the DocLayNet fine-tune prompted with the DocLayNet names
+  #                   it was trained on;
+  #   doclaynet_canonical -- that same fine-tune re-prompted with the canonical
+  #                   names.  The gap between the last two measures how much of
+  #                   the prompt mechanism is real generalisation and how much
+  #                   is a re-labelling of a head that has already been fixed
+  #                   by fine-tuning.
+  - id: docsam.large_canonical
+    repo: DocSAM
+    display: "DocSAM-L · canonical class prompt (all-dataset)"
+    env: docsam
+    adapter: docsam_layout
+    taxonomy: docsam_canonical
+    input: image_300dpi
+    config: {weights: docsam_large_all_dataset.pth, model_size: large,
+             class_names: [title, heading, text, list, table, figure, caption,
+                           formula, header, footer, footnote, sidebar,
+                           "page number", separator],
+             dataset_name: Document, threshold: 0.5,
+             short_range: [704, 896], patch_size: [640, 640]}
+
+  - id: docsam.base_canonical
+    repo: DocSAM
+    display: "DocSAM-B · canonical class prompt (all-dataset)"
+    env: docsam
+    adapter: docsam_layout
+    taxonomy: docsam_canonical
+    input: image_300dpi
+    config: {weights: docsam_base_all_dataset.pth, model_size: base,
+             class_names: [title, heading, text, list, table, figure, caption,
+                           formula, header, footer, footnote, sidebar,
+                           "page number", separator],
+             dataset_name: Document, threshold: 0.5,
+             short_range: [704, 896], patch_size: [640, 640]}
+
+  - id: docsam.large_doclaynet
+    repo: DocSAM
+    display: "DocSAM-L · DocLayNet fine-tune, DocLayNet prompt"
+    env: docsam
+    adapter: docsam_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: docsam_large_doclaynet.pth, model_size: large,
+             class_names: [Caption, Footnote, Formula, List-item, Page-footer,
+                           Page-header, Picture, Section-header, Table, Text, Title],
+             dataset_name: DocLayNet, threshold: 0.5,
+             short_range: [704, 896], patch_size: [800, 800]}
+
+  - id: docsam.large_doclaynet_canonical
+    repo: DocSAM
+    display: "DocSAM-L · DocLayNet fine-tune, canonical prompt"
+    env: docsam
+    adapter: docsam_layout
+    taxonomy: docsam_canonical
+    input: image_300dpi
+    config: {weights: docsam_large_doclaynet.pth, model_size: large,
+             class_names: [title, heading, text, list, table, figure, caption,
+                           formula, header, footer, footnote, sidebar,
+                           "page number", separator],
+             dataset_name: DocLayNet, threshold: 0.5,
+             short_range: [704, 896], patch_size: [800, 800]}
+
+  # Same all-dataset weights as docsam.large_canonical, prompted with the
+  # DocLayNet-11 names instead.  Weights fixed, prompt varied: this isolates
+  # how much of the canonical-prompt result is the wording of the prompt
+  # rather than the checkpoint.
+  - id: docsam.large_doclaynet_prompt
+    repo: DocSAM
+    display: "DocSAM-L · all-dataset weights, DocLayNet prompt"
+    env: docsam
+    adapter: docsam_layout
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: docsam_large_all_dataset.pth, model_size: large,
+             class_names: [Caption, Footnote, Formula, List-item, Page-footer,
+                           Page-header, Picture, Section-header, Table, Text, Title],
+             dataset_name: DocLayNet, threshold: 0.5,
+             short_range: [704, 896], patch_size: [640, 640]}
+
+  # ---------------- ndl_layout (National Diet Library, Japan) -------------
+  # Trained on Japanese printed material, so the only detector here whose
+  # training distribution is not left-to-right Latin script. Cascade Mask R-CNN
+  # (mmcls ConvNeXt-tiny + FPN), 17 classes mixing line-level and block-level
+  # regions, instance masks. Reuses the mmdet 2.x stack from harness/setup/rodla.sh.
+  # `blocks_only` drops the line classes so the two granularities can be compared.
+  - id: ndl.layout
+    repo: ndl_layout
+    display: "NDL ndl_layout · Cascade Mask R-CNN ConvNeXt-T (Japanese)"
+    env: rodla
+    adapter: ndl_layout
+    taxonomy: ndl
+    input: image_300dpi
+    config: {weights: ndl_retrainmodel.pth,
+             config: "configs/ndl/cascade_mask_rcnn_convnext-t_p4_w7_fpn_giou_4conv1f_fp16_ms-crop_3x_coco.py",
+             threshold: 0.3, blocks_only: false}
+
+  - id: ndl.layout_blocks
+    repo: ndl_layout
+    display: "NDL ndl_layout · block-level classes only"
+    env: rodla
+    adapter: ndl_layout
+    taxonomy: ndl
+    input: image_300dpi
+    config: {weights: ndl_retrainmodel.pth,
+             config: "configs/ndl/cascade_mask_rcnn_convnext-t_p4_w7_fpn_giou_4conv1f_fp16_ms-crop_3x_coco.py",
+             threshold: 0.3, blocks_only: true}
+
+  # ---------------- RapidLayout (third-party ONNX checkpoints) -------------
+  # RapidLayout republishes several independently trained detectors behind one
+  # ONNX API.  Only the checkpoints we have no other access to are registered:
+  # the PP PicoDet models (CDLA and PubLayNet) and the three 360LayoutAnalysis
+  # YOLOv8n models.  DocLayout-YOLO and PP-DocLayoutV2/V3 are reachable
+  # through this package too, but they are already benchmarked under
+  # PDF-Extract-Kit and PaddleOCR and are deliberately not double-counted.
+  #
+  # `yolov8n_layout_report` is the one to watch: it is trained on Chinese
+  # research reports, the closest public training distribution to this corpus.
+  # CPU-only -- onnxruntime ships no aarch64 CUDA execution provider.
+  - id: rapidlayout.pp_cdla
+    repo: RapidLayout
+    display: "RapidLayout · PP PicoDet (CDLA, Chinese academic)"
+    env: rapidlayout
+    adapter: rapidlayout
+    taxonomy: cdla
+    input: image_300dpi
+    config: {model_type: pp_layout_cdla, threshold: 0.5,
+             architecture: "PicoDet-LCNet", training_set: "CDLA (Chinese academic literature, 10 classes)",
+             upstream_source: "PaddleOCR ppstructure layout, re-exported to ONNX by RapidAI"}
+
+  - id: rapidlayout.pp_publaynet
+    repo: RapidLayout
+    display: "RapidLayout · PP PicoDet (PubLayNet)"
+    env: rapidlayout
+    adapter: rapidlayout
+    taxonomy: publaynet
+    input: image_300dpi
+    config: {model_type: pp_layout_publaynet, threshold: 0.5,
+             architecture: "PicoDet-LCNet", training_set: "PubLayNet",
+             upstream_source: "PaddleOCR ppstructure layout, re-exported to ONNX by RapidAI"}
+
+  - id: rapidlayout.y360_report
+    repo: RapidLayout
+    display: "360LayoutAnalysis · YOLOv8n (Chinese research reports)"
+    env: rapidlayout
+    adapter: rapidlayout
+    taxonomy: layout360_report
+    input: image_300dpi
+    config: {model_type: yolov8n_layout_report, threshold: 0.5,
+             architecture: "YOLOv8n", training_set: "360LayoutAnalysis Chinese research reports (9 classes)",
+             upstream_source: "360AILAB-NLP/360LayoutAnalysis, re-exported to ONNX by RapidAI"}
+
+  - id: rapidlayout.y360_paper
+    repo: RapidLayout
+    display: "360LayoutAnalysis · YOLOv8n (Chinese papers, CDLA labels)"
+    env: rapidlayout
+    adapter: rapidlayout
+    taxonomy: cdla
+    input: image_300dpi
+    config: {model_type: yolov8n_layout_paper, threshold: 0.5,
+             architecture: "YOLOv8n", training_set: "CDLA label set (Chinese academic papers)",
+             upstream_source: "360AILAB-NLP/360LayoutAnalysis, re-exported to ONNX by RapidAI"}
+
+  - id: rapidlayout.y360_general6
+    repo: RapidLayout
+    display: "360LayoutAnalysis · YOLOv8n (general, 6 classes)"
+    env: rapidlayout
+    adapter: rapidlayout
+    taxonomy: layout360_general6
+    input: image_300dpi
+    config: {model_type: yolov8n_layout_general6, threshold: 0.5,
+             architecture: "YOLOv8n", training_set: "360LayoutAnalysis general (6 classes)",
+             upstream_source: "360AILAB-NLP/360LayoutAnalysis, re-exported to ONNX by RapidAI"}
+
+  # ---------------- DocLayNet YOLO checkpoints from other trainers --------
+  # Three questions the hantian/yolo-doclaynet rows above cannot answer on
+  # their own, each asked here as a controlled pair rather than as another
+  # leaderboard entry:
+  #
+  #   * does the DocLayNet **v1.2** revision change anything?  Armaggheddon's
+  #     checkpoints are the only public ones trained on v1.2.
+  #   * does the architecture matter at fixed data?  Armaggheddon published
+  #     YOLO11 and YOLO26 trained on exactly the same v1.2 split.
+  #   * does the *trainer* matter at fixed data and architecture?  moured (KIT,
+  #     the RoDLA group) trained YOLOv11x on DocLayNet v1 independently.
+  - id: yolo_v12.armaggheddon_yolo26m
+    repo: Armaggheddon-yolo-doc-layout
+    display: "Armaggheddon · YOLO26-M (DocLayNet v1.2)"
+    env: yolo
+    adapter: yolo_doclaynet
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {repo_id: "Armaggheddon/yolo26-document-layout",
+             weights: "yolo26m_doc_layout.pt", imgsz: 1024, conf: 0.25, iou: 0.45,
+             architecture: "YOLO26-M", training_set: "DocLayNet v1.2"}
+
+  - id: yolo_v12.armaggheddon_yolo11m
+    repo: Armaggheddon-yolo-doc-layout
+    display: "Armaggheddon · YOLO11-M (DocLayNet v1.2)"
+    env: yolo
+    adapter: yolo_doclaynet
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {repo_id: "Armaggheddon/yolo11-document-layout",
+             weights: "yolo11m_doc_layout.pt", imgsz: 1024, conf: 0.25, iou: 0.45,
+             architecture: "YOLO11-M", training_set: "DocLayNet v1.2"}
+
+  - id: moured.yolov11x_doclaynet
+    repo: moured-YOLOv11-DLA
+    display: "moured (KIT) · YOLOv11-X (DocLayNet)"
+    env: yolo
+    adapter: yolo_doclaynet
+    taxonomy: doclaynet
+    input: image_300dpi
+    config: {weights: "yolov11x_best.pt", imgsz: 1024, conf: 0.25, iou: 0.45,
+             weights_url: "https://github.com/moured/YOLOv11-Document-Layout-Analysis/releases/download/doclaynet_weights/yolov11x_best.pt",
+             architecture: "YOLOv11-X", training_set: "DocLayNet"}
+
+  # ---------------- kraken blla (RTL-aware baseline segmentation) ----------
+  # The only system here with an explicit text-direction parameter instead of a
+  # built-in left-to-right assumption, and the closest available stand-in for
+  # the pixelwise segmentation Eynollah was supposed to provide.  Three runs:
+  # lines with the correct RTL direction, the same with LTR so the effect of
+  # the setting is measured rather than assumed, and the model's own region
+  # head emitted verbatim.  Line runs are *line-level* granularity -- each
+  # region is one text line -- and are labelled as such.
+  - id: kraken.blla_lines_rtl
+    repo: kraken
+    display: "kraken blla · line polygons (right-to-left)"
+    env: kraken
+    adapter: kraken_blla
+    taxonomy: kraken
+    input: image_300dpi
+    config: {emit: lines, text_direction: horizontal-rl}
+
+  - id: kraken.blla_lines_ltr
+    repo: kraken
+    display: "kraken blla · line polygons (left-to-right)"
+    env: kraken
+    adapter: kraken_blla
+    taxonomy: kraken
+    input: image_300dpi
+    config: {emit: lines, text_direction: horizontal-lr}
+
+  - id: kraken.blla_regions
+    repo: kraken
+    display: "kraken blla · region head, verbatim"
+    env: kraken
+    adapter: kraken_blla
+    taxonomy: kraken
+    input: image_300dpi
+    config: {emit: regions, text_direction: horizontal-rl}
