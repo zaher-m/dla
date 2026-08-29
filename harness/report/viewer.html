@@ -1,0 +1,131 @@
+<!--
+  Viewer report — the body of the document produced for an uploaded PDF.
+
+  It contains the orbit graph and the side-by-side comparison and nothing else.
+  That is deliberate: the full benchmark report carries authored findings about
+  a corpus that was read, measured and argued over, and none of that exists for
+  a document the tool has just been handed. Presenting an automatically
+  generated "verdict" here would be inventing evidence. What the viewer shows is
+  exactly what each model returned, on identical inputs at identical scale, and
+  leaves the judgement to the reader.
+
+  Structure and class names are shared with template.html through style.css, so
+  the two reports cannot drift apart visually.
+-->
+<div class="topbar"><div class="topbar-in">
+  <div class="brandmark">DLA&nbsp;Suite <span>/ layout comparison</span></div>
+  <nav class="navlinks">
+    <a href="#viewer">Orbit</a><a href="#counts">Per-page counts</a>
+    <a href="#metrics">Metrics</a><a href="#systems">Systems</a>
+  </nav>
+  <button class="tbtn" id="themeBtn" type="button">Theme</button>
+</div></div>
+
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">Document layout analysis · side-by-side</div>
+  <h1 id="docTitle">Layout comparison</h1>
+  <p class="lede" id="docLede">Every model below ran on the same pages, rendered
+  once at 300&nbsp;dpi, and its output is drawn in the same coordinate space with
+  the same colours. Nothing here is a ranking: it is what each system returned,
+  shown next to what the PDF itself says is on the page.</p>
+  <div class="hero-meta" id="heroMeta"></div>
+</div></header>
+
+<section id="viewer"><div class="wrap-wide">
+  <div class="eyebrow">Side-by-side</div>
+  <h2>Orbit viewer</h2>
+  <p class="sect-lede">The page sits at the centre; every model orbits it at a
+  <strong>fixed angular position</strong>, so a given model is always in the same
+  place no matter which page you look at or which models you hide. Drag to pan,
+  scroll to zoom, click any panel to open it side-by-side with the page.</p>
+  <div class="vc">
+    <div class="ctl-row"><span class="ctl-label">Page</span>
+      <div class="pagestrip" id="pageStrip"></div></div>
+    <div class="ctl-row"><span class="ctl-label">Models</span>
+      <div class="chips" id="sysChips"></div></div>
+    <div class="ctl-row"><span class="ctl-label">Classes</span>
+      <div class="chips" id="clsChips"></div></div>
+    <div class="ctl-row">
+      <span class="ctl-label">Display</span>
+      <div class="chips">
+        <button class="chip" id="tLabels" aria-pressed="false">Labels</button>
+        <button class="chip" id="tConf" aria-pressed="false">Confidence</button>
+        <button class="chip" id="tOrder" aria-pressed="false">Reading order</button>
+        <button class="chip" id="tFill" aria-pressed="true">Fill</button>
+        <button class="chip" id="tRef" aria-pressed="false">PDF reference</button>
+        <button class="chip" id="tLinks" aria-pressed="true">Orbit rings</button>
+      </div>
+      <label class="chip" style="cursor:default">min&nbsp;conf
+        <input type="range" class="slider" id="confSlider" min="0" max="0.95" step="0.05" value="0">
+        <span class="ct" id="confVal">0.00</span></label>
+    </div>
+  </div>
+  <div class="ringmap" id="ringMap"></div>
+  <div class="orbit-stage" id="stage">
+    <div class="orbit-world" id="world"></div>
+    <div class="orbit-hint">drag to pan · scroll to zoom · <strong>hover a panel to magnify</strong> · click to compare</div>
+    <div class="zoombar">
+      <button id="zOut" title="Zoom out">−</button>
+      <button id="zIn" title="Zoom in">+</button>
+      <button id="zFit" class="wide" title="Fit to view">fit</button>
+    </div>
+  </div>
+  <div class="legend" id="legend"></div>
+</div></section>
+
+<div class="focus" id="focus"><div class="focus-in">
+  <div class="focus-hd">
+    <h3 style="margin:0" id="focusTitle"></h3>
+    <button class="tbtn" id="focusClose">Close</button>
+  </div>
+  <div class="focus-grid" id="focusGrid"></div>
+  <div id="focusMeta" class="small" style="margin-top:18px"></div>
+</div></div>
+
+<section id="counts"><div class="wrap-wide">
+  <div class="eyebrow">Disagreement, directly</div>
+  <h2>How many of each region did each model find?</h2>
+  <p class="sect-lede">One row per model, one column per canonical class, for the
+  page selected above. The <strong>consensus</strong> row is the median count
+  across models — not ground truth, but the field's collective answer. Cells are
+  shaded by distance from it, so a model that sees three tables where everyone
+  else sees one is immediately visible.</p>
+  <div class="tablewrap"><table class="matrix" id="countTable"></table></div>
+  <p class="small" style="margin-top:16px" id="countNote">Counts are after the
+  class filter and confidence floor set in the viewer, so they match exactly what
+  is drawn above.</p>
+</div></section>
+
+<section id="metrics"><div class="wrap-wide">
+  <div class="eyebrow">Measured, not judged</div>
+  <h2>Geometry against the PDF's own content stream</h2>
+  <p class="sect-lede">These are not accuracy scores against human labels — there
+  are none for this document. They are geometric agreements with what the PDF
+  itself declares: where its glyphs are, where its images and vector art are,
+  where its ruling lines are. A born-digital PDF answers those questions exactly.
+  For a scanned document there is no text layer to compare against and these
+  columns will be empty; the visual comparison above still works.</p>
+  <div class="tablewrap"><table id="metricTable"></table></div>
+  <p class="small" style="margin-top:16px" id="metricNote"></p>
+</div></section>
+
+<section id="systems"><div class="wrap-wide">
+  <div class="eyebrow">What ran</div>
+  <h2>Systems</h2>
+  <p class="sect-lede">Every configuration that executed, with the checkpoint it
+  loaded, the runtime it loaded it under, the device it ran on and the exact
+  configuration it was given. A system that failed is listed with its status
+  rather than omitted.</p>
+  <div class="syscards" id="sysCards"></div>
+</div></section>
+
+<div class="footer"><div class="wrap">
+  <p class="small" id="footerBody">Generated by the DLA Suite. Each model ran in
+  its own isolated environment on identical inputs; region geometry is drawn in
+  the page's own pixel space. Raw and normalised outputs for every system are
+  preserved alongside this file in the job workspace.</p>
+</div></div>
+
+<script id="benchdata" type="application/json">__DATA__</script>
+<script>__NARRATIVE__</script>
+<script>__APP__</script>
