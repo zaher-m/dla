@@ -1,0 +1,14 @@
+# Everything that has ever produced a scoreable result.
+#
+# The excluded entries stay in the registry so their status is on the record,
+# but running them only reproduces the same failure.
+name: full
+description: >
+  Every evaluable configuration in the registry — 54 of them. Expect several
+  minutes per page on one GPU. This is what the reference benchmark ran.
+include: all
+exclude:
+  - eynollah.layout        # TensorFlow subprocess predictor will not start (see study)
+  - dolphin.layout         # checkpoint does not follow its own layout prompt
+  - olmocr.layout          # linearised text, not typed layout regions
+  - mineru.vlm             # registered but never completed

@@ -1,0 +1,29 @@
+# The default. Every repository family that reached the leading group, plus the
+# systems that answer a question none of the others do (masks, reading order,
+# non-Latin training distribution, coverage ceiling).
+name: balanced
+description: >
+  The recommended set: sixteen systems covering every repository family that is
+  competitive on real documents, with at least one representative of each
+  distinct capability — instance masks, reading order, RTL-aware segmentation,
+  and a non-Western training distribution.
+include:
+  # --- leading group -------------------------------------------------------
+  - docling.egret_xlarge
+  - docling.heron
+  - surya.fast_layout_t25
+  - surya.v2_layout
+  - paddleocr.pp_doclayoutv2
+  - mineru.pipeline
+  - ndl.layout                       # highest text recall measured; masks
+  # --- strong, independent families ---------------------------------------
+  - pek.doclayout_yolo
+  - dly.docstructbench_1280
+  - yolo_doclaynet.v26l
+  - yolo_v12.armaggheddon_yolo11m
+  - rfdetr.doclaynet
+  - rodla.doclaynet                  # never invents a region
+  - rapidlayout.y360_report          # CPU, best precision per byte
+  # --- capabilities nothing else supplies ----------------------------------
+  - paddleocr.pp_doclayoutv3         # instance masks on CPU
+  - kraken.blla_regions              # coverage ceiling, RTL-aware

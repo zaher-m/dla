@@ -1,0 +1,16 @@
+# Five systems, roughly 0.4 s of GPU time per page in total.
+#
+# Chosen so the set spans different failure modes rather than agreeing with
+# each other: two DocLayNet detectors from unrelated trainers, one VLM-adjacent
+# transformer, one CPU-only ONNX model, and one segmenter that emits masks.
+name: fast
+description: >
+  Quick look. Five systems, one from each family that earned its place in the
+  study, biased towards low latency. Use this to see whether a document is
+  going to be handled sensibly at all.
+include:
+  - surya.fast_layout_t25            # 47 ms/page, reading order, top tier
+  - docling.heron                    # richest vocabulary, captions
+  - yolo_v12.armaggheddon_yolo11m    # best precision-at-recall on GPU, 76 ms
+  - rapidlayout.y360_report          # CPU, 12 MB, zero invented regions
+  - paddleocr.pp_doclayoutv3         # CPU, real instance masks

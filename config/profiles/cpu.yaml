@@ -1,0 +1,14 @@
+# No GPU required anywhere in this set.
+name: cpu
+description: >
+  Runs end to end on a machine with no NVIDIA device. PaddleOCR and RapidLayout
+  execute under ONNX Runtime / PaddlePaddle on CPU; timings here are CPU
+  timings and are labelled as such in the report.
+include:
+  - paddleocr.pp_doclayoutv3
+  - paddleocr.pp_doclayoutv2
+  - paddleocr.pp_doclayout_plus_l
+  - rapidlayout.y360_report
+  - rapidlayout.pp_cdla
+  - rapidlayout.y360_general6
+  - rfdetr.doclaynet

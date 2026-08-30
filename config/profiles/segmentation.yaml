@@ -1,0 +1,12 @@
+# Only systems that emit genuine per-instance masks or polygons.
+name: segmentation
+description: >
+  Pixel-level output only. Every system here returns real, non-rectangular
+  region geometry rather than a bounding box re-exported as a polygon.
+include:
+  - ndl.layout                    # Cascade Mask R-CNN, masks on every page
+  - paddleocr.pp_doclayoutv3      # binary instance masks, CPU
+  - docsam.large_doclaynet        # Mask2Former, prompt-driven class set
+  - kraken.blla_regions           # RTL-aware pixelwise text extent
+  - swindocseg.doclaynet          # highest class agreement, very heavy
+  - layoutparser.prima_mask
