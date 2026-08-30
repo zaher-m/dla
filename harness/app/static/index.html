@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>DLA Suite — document layout analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="topbar"><div class="topbar-in">
+  <div class="brandmark">DLA&nbsp;Suite <span>/ layout analysis</span></div>
+  <div class="spacer"></div>
+  <a class="btn" href="/" id="navNew">New analysis</a>
+  <a class="btn" href="/api/docs" target="_blank" rel="noopener">API</a>
+  <button class="btn" id="themeBtn" type="button">Theme</button>
+</div></div>
+
+<main><div class="wrap">
+
+  <!-- ============ upload ============ -->
+  <section id="viewUpload">
+    <div class="eyebrow">Upload</div>
+    <h1>Run every layout model over your document</h1>
+    <p class="small" style="max-width:62ch">Drop in a PDF. Each page is rendered
+    once at 300&nbsp;dpi and handed to every selected system in its own isolated
+    environment, so nothing any model installs can change what another one sees.
+    The result is a single self-contained page: an orbit of every model's output
+    around your page, and a side-by-side comparison of any two.</p>
+
+    <div class="card" style="margin-top:26px">
+      <div class="drop" id="drop" tabindex="0" role="button"
+           aria-label="Choose a PDF file or drop one here">
+        <h3>Drop a PDF here</h3>
+        <div class="small">or click to choose a file</div>
+        <div class="file" id="fileName"></div>
+      </div>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" class="hidden">
+
+      <div class="eyebrow" style="margin-top:24px">Which models</div>
+      <div class="opts" id="profiles"></div>
+
+      <div class="rowline" style="margin-top:22px">
+        <button class="btn primary" id="goBtn" disabled>Analyse document</button>
+        <span class="tiny" id="limits"></span>
+      </div>
+      <div class="logbox err hidden" id="uploadErr" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">Previous runs</div>
+      <h2>Jobs</h2>
+      <div id="jobsWrap"><p class="small" id="jobsEmpty">No analyses yet.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ job ============ -->
+  <section id="viewJob" class="hidden">
+    <div class="eyebrow" id="jobEyebrow">Analysis</div>
+    <h1 id="jobTitle">Running…</h1>
+    <p class="small" id="jobSub"></p>
+
+    <div class="card" id="progressCard">
+      <div class="rowline" style="justify-content:space-between">
+        <h2 style="margin:0">Progress</h2>
+        <span class="badge run" id="jobState">running</span>
+      </div>
+      <div class="bar"><i id="bar" style="width:0%"></i></div>
+      <div class="tiny" id="barNote"></div>
+      <div class="stages" id="stages"></div>
+      <div class="logbox hidden" id="jobLog"></div>
+      <div class="logbox err hidden" id="jobErr"></div>
+    </div>
+
+    <div id="reportCard" class="hidden">
+      <div class="rowline" style="justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0">Report</h2>
+        <div class="rowline">
+          <a class="btn" id="openReport" target="_blank" rel="noopener">Open full screen</a>
+          <a class="btn" id="downloadData" download>Download data</a>
+          <button class="btn danger" id="deleteJob">Delete</button>
+        </div>
+      </div>
+      <div class="reportwrap"><iframe id="reportFrame" title="Layout comparison report"></iframe></div>
+    </div>
+  </section>
+
+</div></main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
