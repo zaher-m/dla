@@ -1,6 +1,6 @@
 # DLA Suite
 
-Run many document layout analysis models over the same PDF and compare what they return.
+Run and compare 58 document layout analysis configurations across 23 model repositories over your documents and evaluate thier results.
 
 Each page is rendered once at 300 dpi and passed to every selected model in its own isolated
 environment. The output is a single self-contained HTML file: every model's regions drawn around
