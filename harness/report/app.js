@@ -43,6 +43,7 @@ if(have('#docTitle')&&(D.corpus||{}).documents&&D.corpus.documents.length===1){
   const d=D.corpus.documents[0];
   $('#docTitle').textContent=d.file||'Layout comparison';
 }
+put('#docTitle',N.title); put('#docLede',N.lede);
 
 /* ---------- static narrative blocks (full report only) ---------- */
 put('#findingCards',(N.findings||[]).map((f,i)=>
