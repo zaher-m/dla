@@ -4,6 +4,10 @@
 # Runtime data: uploads and one workspace per analysis.
 /data/
 
+# Input PDFs. Drop your own in; nothing here is tracked.
+samples/*
+!samples/README.md
+
 /benchmark/
 
 /docs/prompts/

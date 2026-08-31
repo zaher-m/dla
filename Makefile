@@ -100,9 +100,11 @@ doctor:  ## check paths, GPU, and which environments are present
 	$(EXEC) $(PY) -m core.paths
 	@$(EXEC) $(PY) -c "import torch;print('cuda:',torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')" || true
 
-test:  ## end-to-end smoke test: one sample PDF, three pages, fast profile
+test:  ## end-to-end smoke test: the first PDF in samples/, three pages, fast profile
+	@test -n "$(firstword $(wildcard samples/*.pdf))" \
+	  || { echo "put a PDF in samples/ first (see samples/README.md)"; exit 2; }
 	$(EXEC) env DLA_SELECTION_MAX_PAGES=3 $(PY) -m core.pipeline \
-	  --input $(firstword $(wildcard samples/*.pdf)) --profile fast
+	  --input "$(firstword $(wildcard samples/*.pdf))" --profile fast
 
 verify:  ## render a built report in a headless browser and assert it works
 	$(EXEC) /work/assets/envs/shot/bin/python scripts/dev/verify_report.py \
