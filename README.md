@@ -14,6 +14,15 @@ make up        # http://localhost:8080
 
 Upload a PDF in the page that opens.
 
+<p align="center">
+  <img src="docs/orbit.svg" alt="Sixteen layout models arranged around one page, each panel showing that model's predicted regions" width="100%">
+</p>
+
+<p align="center">
+  <sub>One page of a real financial report through the <code>balanced</code> profile. The page sits at the
+  centre; every model holds a fixed angular position so you can track it across pages.</sub>
+</p>
+
 ## Why it exists
 
 Layout models are trained on different datasets with different class vocabularies, and published
@@ -33,7 +42,7 @@ of disk for the `balanced` profile, 45 GB for `full`.
 ```bash
 cp .env.example .env                      # port, profile, page cap, HF cache location
 make setup SETUP_PROFILE=fast             # smaller install
-make analyse FILE=doc.pdf PROFILE=fast    # no UI
+make analyse FILE=doc.pdf PROFILE=fast    # no UI, any path
 make corpus DIR=pdfs/ WORKSPACE=out       # a whole directory into one workspace
 make list                                 # what is registered and what is installed
 make doctor                               # resolved paths, GPU visibility
@@ -161,7 +170,7 @@ harness/adapters/  one per model family
 harness/setup/     one per environment
 harness/report/    report shell and viewer
 harness/app/       FastAPI service and UI
-samples/           sample PDFs
+samples/           gitignored: put input PDFs here
 assets/            gitignored: virtualenvs, weights, cloned repositories
 data/              gitignored: uploads and job workspaces
 ```

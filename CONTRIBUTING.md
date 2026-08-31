@@ -49,7 +49,7 @@ make list                 # your system appears, environment builds
 make test                 # the pipeline still completes end to end
 make verify               # the report renders, in both themes, at every width
 make test-ui              # the UI drives an upload to a finished report
-make analyse FILE=samples/2021-3_AR.pdf PROFILE=fast
+make analyse FILE=samples/<your>.pdf PROFILE=fast
 ```
 
 `make verify` and `make test-ui` need the optional headless browser:
@@ -62,7 +62,7 @@ If you changed anything in `harness/report/`, rebuild both variants and check bo
 
 ```bash
 make report                                        # full
-make analyse FILE=samples/BODAchievements_2012.pdf # viewer
+make analyse FILE=samples/<your>.pdf
 ```
 
 ## Style
