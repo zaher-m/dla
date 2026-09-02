@@ -1,0 +1,34 @@
+# Thresholds for the validation checks.
+#
+# Every value here is data, not code: fitted against a corpus, dated, and
+# recorded with the sample it was fitted on.  `fitted: no` means the value is a
+# starting guess and has not yet been measured.
+version: 1
+
+# --- C0: PSR trust and page routing --------------------------------------
+c0:
+  # C0-01 no text layer at all
+  min_chars: 1
+  # C0-02 a text layer too thin to be the page's real content
+  sparse_max_lines: 5
+  sparse_min_ink: 0.15
+  # C0-03 text painted invisibly or in the background colour
+  invisible_frac: 0.30
+  # C0-04 an OCR layer sitting under a full-page scan
+  ocr_lines_in_image: 0.60
+  ocr_image_area: 0.50
+  # C0-06 characters that decoded to nothing usable
+  undecodable_frac: 0.20
+  # C0-07 one "line" per glyph: broken font subsetting
+  frag_max_chars_per_span: 1
+  frag_min_spans: 200
+  # C0-08 text direction.  Decided per DOCUMENT, not per page: a statistical
+  # table page inside an Arabic report is 8% Arabic characters and still reads
+  # right to left.  Fitted on 895 pages / 28 documents -- the corpus separates
+  # at 0.000 vs >=0.181 aggregate, so 0.05 sits in a wide empty gap.
+  rtl_frac: 0.20              # page-level, diagnostic only
+  doc_rtl_aggregate: 0.05     # share of all characters in the document
+  doc_rtl_max_page: 0.50      # or any single page this Arabic
+  doc_min_chars: 200          # below this the document cannot vote; direction unknown
+  # C0-09 glyphs drawn outside the visible area
+  clipped_frac: 0.05
