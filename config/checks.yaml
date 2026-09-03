@@ -32,3 +32,23 @@ c0:
   doc_min_chars: 200          # below this the document cannot vote; direction unknown
   # C0-09 glyphs drawn outside the visible area
   clipped_frac: 0.05
+
+# --- Tier 1: what blocks a page ------------------------------------------
+#
+# Fitted on 29 benchmark pages x 53 systems (1,546 pairs) against the PSR
+# reference layout, at roughly the 75th percentile of the twelve leading
+# systems.  That places a page relative to what the corpus actually produces
+# and keeps the escalation rate near the 12-20% budget.
+#
+# It does NOT establish a false-accept rate: without annotated pages there is
+# nothing to be wrong against.  These are holding values, to be refitted for
+# precision at 80% recall of consequential errors the moment gold data exists.
+#
+# Grouping precision and order tau are deliberately absent.  Both compare
+# against a heuristic reference and both largely measure granularity, so they
+# are recorded as features and never block.
+compare:
+  orphan_rate: 0.12               # share of glyph lines in no region at all
+  cross_merge_rate: 0.25          # grouped line pairs spanning a column, table or figure boundary
+  bucket_move_rate: 0.35          # of lines the reference can vouch for, share sent to the wrong store
+  excess_band_transitions: 2      # column changes beyond what the page structure allows
