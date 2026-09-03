@@ -130,6 +130,148 @@ def column_bands(line_boxes, W, H):
     return bands
 
 
+def page_reference(page, px_width, px_height):
+    """Geometric reference for one page, in the pixel space of its render.
+
+    Split out of `build` so anything holding a page and a render size can
+    obtain a reference without a workspace -- the validation package needs
+    one per uploaded page, long before a benchmark run exists.
+    """
+    rect = page.rect
+    sx = px_width / rect.width
+    sy = px_height / rect.height
+
+    # PyMuPDF renders `page.get_pixmap()` in *display* space (the /Rotate is
+    # applied), but `get_text`, `get_image_rects` and `get_drawings` all report
+    # geometry in the page's *unrotated* space.  On the four landscape pages in
+    # this corpus (/Rotate 90) that put the whole reference 90 degrees out of
+    # register with the very images every system is scored against -- PSR text
+    # lines ran to y=3135 on a page only 2480 px tall.  `page.rotation_matrix`
+    # is the identity when /Rotate is 0, so this changes nothing elsewhere.
+    M = page.rotation_matrix
+
+    def R(b):                       # unrotated box -> display-space box
+        r = fitz.Rect(b[0], b[1], b[2], b[3]) * M
+        r.normalize()
+        return [r.x0, r.y0, r.x1, r.y1]
+
+    PW, PH = float(px_width), float(px_height)
+
+    def SC(b):                      # display-space box -> pixel space, clipped
+        # Content streams routinely draw past the media box (a chart whose
+        # plotting area runs off the left edge, a rule that overshoots).  Nothing
+        # off the page is visible to a detector, so leaving it in the reference
+        # only inflates reference areas and caps IoU below 1 for a perfect
+        # prediction -- page_002 had a graphic area starting at x = -1120 px.
+        return [min(max(b[0] * sx, 0.0), PW), min(max(b[1] * sy, 0.0), PH),
+                min(max(b[2] * sx, 0.0), PW), min(max(b[3] * sy, 0.0), PH)]
+
+    def S(b):
+        return SC(R(b))
+
+    raw = page.get_text("rawdict")
+    lines, spans = [], []
+    for blk in raw["blocks"]:
+        if blk["type"] != 0:
+            continue
+        for ln in blk["lines"]:
+            lb = ln["bbox"]
+            if lb[2] - lb[0] > 1 and lb[3] - lb[1] > 1:
+                lines.append(S(lb))
+            for sp in ln["spans"]:
+                spans.append({"bbox": S(sp["bbox"]), "size": sp["size"],
+                              "font": sp["font"]})
+    blocks = [S(b[:4]) for b in page.get_text("blocks") if b[6] == 0]
+
+    images = []
+    for im in page.get_images(full=True):
+        try:
+            for rr in page.get_image_rects(im[0]):
+                images.append(S([rr.x0, rr.y0, rr.x1, rr.y1]))
+        except Exception:
+            pass
+
+    vec, hl, vl = [], [], []
+    page_area_pt = rect.width * rect.height
+    for dr in page.get_drawings():
+        r = dr["rect"]
+        if r.width < 2 and r.height < 2:
+            continue
+        # A drawing counts as *graphic content* only if it is filled or has
+        # real internal structure.  A single unfilled rectangle is a frame or
+        # a table border, and treating it as a figure would swallow the page.
+        is_graphic = (dr.get("fill") is not None) or (len(dr["items"]) >= 4)
+        if is_graphic and (r.width * r.height) < page_area_pt * 0.45:
+            vec.append(S([r.x0, r.y0, r.x1, r.y1]))
+        for it in dr["items"]:
+            # classify horizontal vs vertical *after* rotation -- on a /Rotate 90
+            # page a stroke that is horizontal in the content stream is drawn
+            # vertically, and a table grid built the other way round is nonsense
+            if it[0] == "l":
+                a, b = it[1] * M, it[2] * M
+                if abs(a.y - b.y) < 1.5 and abs(a.x - b.x) > 20:
+                    hl.append(SC([min(a.x, b.x), a.y - 0.5, max(a.x, b.x), a.y + 0.5]))
+                elif abs(a.x - b.x) < 1.5 and abs(a.y - b.y) > 20:
+                    vl.append(SC([a.x - 0.5, min(a.y, b.y), a.x + 0.5, max(a.y, b.y)]))
+            elif it[0] == "re":
+                rr = fitz.Rect(it[1]) * M
+                rr.normalize()
+                if rr.width > 20 and rr.height < 2.5:
+                    hl.append(SC([rr.x0, rr.y0, rr.x1, rr.y1]))
+                if rr.height > 20 and rr.width < 2.5:
+                    vl.append(SC([rr.x0, rr.y0, rr.x1, rr.y1]))
+
+    # graphic areas = raster images + clustered vector drawings big enough to matter
+    pa = px_width * px_height
+    big_vec = [v for v in vec if (v[2]-v[0]) * (v[3]-v[1]) > 0.004 * pa]
+    graphics = cluster_boxes(images + big_vec, gap=10)
+    graphics = [g for g in graphics
+                if 0.006 * pa < (g[2]-g[0]) * (g[3]-g[1]) < 0.62 * pa]
+
+    # Table grid candidates: cluster the ruling strokes into whole grids.  The
+    # linkage gap has to exceed a table row height at 300 dpi (~40-90 px) or a
+    # single table shatters into one box per rule.
+    grid = cluster_boxes(hl + vl, gap=max(40.0, px_height * 0.03))
+    grid = [g for g in grid if (g[2]-g[0]) > px_width * 0.25
+            and (g[3]-g[1]) > px_height * 0.04]
+
+    # Attribute every glyph line to the structure that owns it.  Axis labels
+    # inside a chart and cells inside a ruled table are *not* body text: a
+    # system that wraps them in a `figure`/`table` region is right, not wrong,
+    # so scoring them as missed body text would invert the result.
+    def inside(box, holders, frac=0.6):
+        ba = max((box[2]-box[0]) * (box[3]-box[1]), 1e-6)
+        for h in holders:
+            ix1, iy1 = max(box[0], h[0]), max(box[1], h[1])
+            ix2, iy2 = min(box[2], h[2]), min(box[3], h[3])
+            if ix2 > ix1 and iy2 > iy1 and ((ix2-ix1)*(iy2-iy1)) / ba >= frac:
+                return True
+        return False
+
+    graphic_text = [L for L in lines if inside(L, graphics)]
+    table_text = [L for L in lines if inside(L, grid) and L not in graphic_text]
+    body_text = [L for L in lines if L not in graphic_text and L not in table_text]
+
+    gutters = find_gutters(body_text, px_width, px_height)
+    bands = column_bands(body_text, px_width, px_height)
+
+    sizes = [s["size"] for s in spans]
+    body = float(np.median(sizes)) if sizes else 0.0
+
+    return {
+        "width": px_width, "height": px_height,
+        "text_lines": lines, "text_blocks": blocks,
+        "body_text_lines": body_text, "graphic_text_lines": graphic_text,
+        "table_text_lines": table_text,
+        "image_rects": images, "graphic_areas": graphics,
+        "ruling_h": len(hl), "ruling_v": len(vl), "grid_candidates": grid,
+        "gutters": gutters, "column_bands": bands,
+        "n_columns_est": max(len(bands), len(gutters) + 1),
+        "body_font_px": round(body * sy, 2),
+        "large_spans": [s["bbox"] for s in spans if s["size"] > body * 1.25],
+    }
+
+
 def build(ws=None, corpus=None):
     ws = ws or BENCH
     corpus = corpus or paths.CORPUS
@@ -141,141 +283,14 @@ def build(ws=None, corpus=None):
     for p in pages:
         d = docs.setdefault(p["doc"], fitz.open(os.path.join(corpus, p["doc"])))
         page = d[p["page"] - 1]
-        rect = page.rect
-        sx = p["px_width"] / rect.width
-        sy = p["px_height"] / rect.height
-
-        # PyMuPDF renders `page.get_pixmap()` in *display* space (the /Rotate is
-        # applied), but `get_text`, `get_image_rects` and `get_drawings` all report
-        # geometry in the page's *unrotated* space.  On the four landscape pages in
-        # this corpus (/Rotate 90) that put the whole reference 90 degrees out of
-        # register with the very images every system is scored against -- PSR text
-        # lines ran to y=3135 on a page only 2480 px tall.  `page.rotation_matrix`
-        # is the identity when /Rotate is 0, so this changes nothing elsewhere.
-        M = page.rotation_matrix
-
-        def R(b):                       # unrotated box -> display-space box
-            r = fitz.Rect(b[0], b[1], b[2], b[3]) * M
-            r.normalize()
-            return [r.x0, r.y0, r.x1, r.y1]
-
-        PW, PH = float(p["px_width"]), float(p["px_height"])
-
-        def SC(b):                      # display-space box -> pixel space, clipped
-            # Content streams routinely draw past the media box (a chart whose
-            # plotting area runs off the left edge, a rule that overshoots).  Nothing
-            # off the page is visible to a detector, so leaving it in the reference
-            # only inflates reference areas and caps IoU below 1 for a perfect
-            # prediction -- page_002 had a graphic area starting at x = -1120 px.
-            return [min(max(b[0] * sx, 0.0), PW), min(max(b[1] * sy, 0.0), PH),
-                    min(max(b[2] * sx, 0.0), PW), min(max(b[3] * sy, 0.0), PH)]
-
-        def S(b):
-            return SC(R(b))
-
-        raw = page.get_text("rawdict")
-        lines, spans = [], []
-        for blk in raw["blocks"]:
-            if blk["type"] != 0:
-                continue
-            for ln in blk["lines"]:
-                lb = ln["bbox"]
-                if lb[2] - lb[0] > 1 and lb[3] - lb[1] > 1:
-                    lines.append(S(lb))
-                for sp in ln["spans"]:
-                    spans.append({"bbox": S(sp["bbox"]), "size": sp["size"],
-                                  "font": sp["font"]})
-        blocks = [S(b[:4]) for b in page.get_text("blocks") if b[6] == 0]
-
-        images = []
-        for im in page.get_images(full=True):
-            try:
-                for rr in page.get_image_rects(im[0]):
-                    images.append(S([rr.x0, rr.y0, rr.x1, rr.y1]))
-            except Exception:
-                pass
-
-        vec, hl, vl = [], [], []
-        page_area_pt = rect.width * rect.height
-        for dr in page.get_drawings():
-            r = dr["rect"]
-            if r.width < 2 and r.height < 2:
-                continue
-            # A drawing counts as *graphic content* only if it is filled or has
-            # real internal structure.  A single unfilled rectangle is a frame or
-            # a table border, and treating it as a figure would swallow the page.
-            is_graphic = (dr.get("fill") is not None) or (len(dr["items"]) >= 4)
-            if is_graphic and (r.width * r.height) < page_area_pt * 0.45:
-                vec.append(S([r.x0, r.y0, r.x1, r.y1]))
-            for it in dr["items"]:
-                # classify horizontal vs vertical *after* rotation -- on a /Rotate 90
-                # page a stroke that is horizontal in the content stream is drawn
-                # vertically, and a table grid built the other way round is nonsense
-                if it[0] == "l":
-                    a, b = it[1] * M, it[2] * M
-                    if abs(a.y - b.y) < 1.5 and abs(a.x - b.x) > 20:
-                        hl.append(SC([min(a.x, b.x), a.y - 0.5, max(a.x, b.x), a.y + 0.5]))
-                    elif abs(a.x - b.x) < 1.5 and abs(a.y - b.y) > 20:
-                        vl.append(SC([a.x - 0.5, min(a.y, b.y), a.x + 0.5, max(a.y, b.y)]))
-                elif it[0] == "re":
-                    rr = fitz.Rect(it[1]) * M
-                    rr.normalize()
-                    if rr.width > 20 and rr.height < 2.5:
-                        hl.append(SC([rr.x0, rr.y0, rr.x1, rr.y1]))
-                    if rr.height > 20 and rr.width < 2.5:
-                        vl.append(SC([rr.x0, rr.y0, rr.x1, rr.y1]))
-
-        # graphic areas = raster images + clustered vector drawings big enough to matter
-        pa = p["px_width"] * p["px_height"]
-        big_vec = [v for v in vec if (v[2]-v[0]) * (v[3]-v[1]) > 0.004 * pa]
-        graphics = cluster_boxes(images + big_vec, gap=10)
-        graphics = [g for g in graphics
-                    if 0.006 * pa < (g[2]-g[0]) * (g[3]-g[1]) < 0.62 * pa]
-
-        # Table grid candidates: cluster the ruling strokes into whole grids.  The
-        # linkage gap has to exceed a table row height at 300 dpi (~40-90 px) or a
-        # single table shatters into one box per rule.
-        grid = cluster_boxes(hl + vl, gap=max(40.0, p["px_height"] * 0.03))
-        grid = [g for g in grid if (g[2]-g[0]) > p["px_width"] * 0.25
-                and (g[3]-g[1]) > p["px_height"] * 0.04]
-
-        # Attribute every glyph line to the structure that owns it.  Axis labels
-        # inside a chart and cells inside a ruled table are *not* body text: a
-        # system that wraps them in a `figure`/`table` region is right, not wrong,
-        # so scoring them as missed body text would invert the result.
-        def inside(box, holders, frac=0.6):
-            ba = max((box[2]-box[0]) * (box[3]-box[1]), 1e-6)
-            for h in holders:
-                ix1, iy1 = max(box[0], h[0]), max(box[1], h[1])
-                ix2, iy2 = min(box[2], h[2]), min(box[3], h[3])
-                if ix2 > ix1 and iy2 > iy1 and ((ix2-ix1)*(iy2-iy1)) / ba >= frac:
-                    return True
-            return False
-
-        graphic_text = [L for L in lines if inside(L, graphics)]
-        table_text = [L for L in lines if inside(L, grid) and L not in graphic_text]
-        body_text = [L for L in lines if L not in graphic_text and L not in table_text]
-
-        gutters = find_gutters(body_text, p["px_width"], p["px_height"])
-        bands = column_bands(body_text, p["px_width"], p["px_height"])
-
-        sizes = [s["size"] for s in spans]
-        body = float(np.median(sizes)) if sizes else 0.0
-
-        ref[p["page_id"]] = {
-            "page_id": p["page_id"], "doc": p["doc"], "page": p["page"],
-            "width": p["px_width"], "height": p["px_height"],
-            "text_lines": lines, "text_blocks": blocks,
-            "body_text_lines": body_text, "graphic_text_lines": graphic_text,
-            "table_text_lines": table_text,
-            "image_rects": images, "graphic_areas": graphics,
-            "ruling_h": len(hl), "ruling_v": len(vl), "grid_candidates": grid,
-            "gutters": gutters, "column_bands": bands,
-            "n_columns_est": max(len(bands), len(gutters) + 1),
-            "body_font_px": round(body * sy, 2),
-            "large_spans": [s["bbox"] for s in spans if s["size"] > body * 1.25],
-            "stratum": p["stratum"],
-        }
+        r = page_reference(page, p["px_width"], p["px_height"])
+        r.update({"page_id": p["page_id"], "doc": p["doc"], "page": p["page"],
+                  "stratum": p["stratum"]})
+        ref[p["page_id"]] = r
+        lines, body_text = r["text_lines"], r["body_text_lines"]
+        graphic_text, table_text = r["graphic_text_lines"], r["table_text_lines"]
+        blocks, graphics = r["text_blocks"], r["graphic_areas"]
+        grid, gutters, bands = r["grid_candidates"], r["gutters"], r["column_bands"]
         print(f"  {p['page_id']}: lines={len(lines)}(body={len(body_text)},"
               f"gfx={len(graphic_text)},tbl={len(table_text)}) blocks={len(blocks)} "
               f"graphics={len(graphics)} grids={len(grid)} gutters={len(gutters)} "
