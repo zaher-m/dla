@@ -196,6 +196,12 @@ def main():
     ens = _load(os.path.join(BENCH, "metrics", "ensemble.json"),
                 {"per_class": {}, "routing": {}, "per_page_class_counts": {}})
     cev = _load(os.path.join(BENCH, "metrics", "class_evidence.json"), {})
+    # Written by the `validate` stage, which is optional and produces nothing on
+    # a job with no text layer.  Embedded whole: it is deliberately small, and a
+    # report that can show what was accepted is worth more than one that shows
+    # only how systems compare to each other.
+    val = _load(os.path.join(BENCH, "validation", "summary.json"),
+                {"systems": {}, "pages": {}})
     dev = {}
     p = os.path.join(BENCH, "metrics", "device_agreement.json")
     if os.path.exists(p):
@@ -287,6 +293,7 @@ def main():
         "ensemble": {"per_class": ens["per_class"], "routing": ens["routing"],
                      "per_page_class_counts": ens["per_page_class_counts"],
                      "iou_threshold": ens["iou_threshold"], "min_backing": ens["min_backing"]},
+        "validation": val,
     }
     outp = os.path.join(BENCH, "reports", "report_data.json")
     os.makedirs(os.path.dirname(outp), exist_ok=True)

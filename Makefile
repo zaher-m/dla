@@ -41,7 +41,7 @@ PY   = /work/assets/envs/harness/bin/python
 .DEFAULT_GOAL := help
 .PHONY: help build setup setup-env up down restart logs shell status list \
         analyse corpus stage report clean-jobs clean-workspace doctor test \
-        verify test-ui
+        verify test-ui validate validate-selftest
 
 help:  ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -105,6 +105,13 @@ test:  ## end-to-end smoke test: the first PDF in samples/, three pages, fast pr
 	  || { echo "put a PDF in samples/ first (see samples/README.md)"; exit 2; }
 	$(EXEC) env DLA_SELECTION_MAX_PAGES=3 $(PY) -m core.pipeline \
 	  --input "$(firstword $(wildcard samples/*.pdf))" --profile fast
+
+validate:  ## decide every page of a workspace: make validate WORKSPACE=benchmark
+	$(EXEC) $(PY) -m validation.stage \
+	  --workspace $(or $(WORKSPACE),benchmark) --corpus $(or $(CORPUS),data/corpus_flat)
+
+validate-selftest:  ## assert the decision policy still drives the decision
+	$(EXEC) $(PY) -m validation.decide
 
 verify:  ## render a built report in a headless browser and assert it works
 	$(EXEC) /work/assets/envs/shot/bin/python scripts/dev/verify_report.py \

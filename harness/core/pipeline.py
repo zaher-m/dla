@@ -47,6 +47,9 @@ STAGES = [
      "Whether routing by class would beat any single system."),
     ("ratings", "core.ratings", [], False,
      "Rubric scores derived from the measured quantities."),
+    ("validate", "validation.stage", [], False,
+     "Check every page against the PDF's own structure and decide it: "
+     "accept, escalate to a reviewer, or defer."),
     ("manifest", "core.manifest", [], False,
      "Record what ran: commits, checkpoints, configs, environments, checksums."),
     ("package", "core.package_report", [], True,
@@ -58,8 +61,9 @@ STAGES = [
 # Stages whose module parses a --workspace flag.  The rest read DLA_WORKSPACE
 # from the environment, which is set for every stage either way; the flag exists
 # so each command in a job's logs can be pasted into a shell and reproduced.
-WS_FLAG = {"inventory", "select", "reference", "run", "package", "report"}
-CORPUS_FLAG = {"inventory", "select", "reference"}
+WS_FLAG = {"inventory", "select", "reference", "run", "package", "report",
+           "validate"}
+CORPUS_FLAG = {"inventory", "select", "reference", "validate"}
 
 
 class Job:

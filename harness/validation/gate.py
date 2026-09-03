@@ -59,29 +59,6 @@ def gate(ws, corpus, systems=None, policy=None):
     return dict(out), p
 
 
-def write(ws, decisions):
-    """Decision records per system, and the queue a reviewer works from."""
-    d = os.path.join(ws, "validation", "decisions")
-    os.makedirs(d, exist_ok=True)
-    for s, rows in decisions.items():
-        with open(os.path.join(d, s + ".json"), "w", encoding="utf8") as f:
-            json.dump(rows, f, indent=1)
-    queue = [{"system": s, "page_id": r["page_id"], "doc": r["doc"],
-              "task": r["task"], "reason": r["reason"], "risk": r["risk"],
-              # The reviewer is told what fired, in words, and which regions to
-              # open.  A score tells them nothing they can act on.
-              "findings": [{"id": f["id"], "severity": f["severity"],
-                            "regions": f.get("regions", []),
-                            "message": f["message"]} for f in r["findings"]]}
-             for s, rows in decisions.items() for r in rows
-             if r["decision"] == "escalate"]
-    queue.sort(key=lambda q: (q["task"], -q["risk"]))
-    path = os.path.join(ws, "validation", "queue.json")
-    with open(path, "w", encoding="utf8") as f:
-        json.dump(queue, f, indent=1)
-    return path, len(queue)
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--workspace", required=True)
@@ -110,8 +87,12 @@ def main():
     if top:
         print("escalated by: " + "  ".join(f"{k} {v}" for k, v in top.most_common(8)))
     if a.write:
-        path, k = write(a.workspace, dec)
-        print(f"\n{k} escalations -> {path}")
+        # The same writer the pipeline stage uses, so the files a tool produces
+        # and the files a job produces cannot drift apart.
+        from validation.stage import write
+        _, k = write(a.workspace, dec, p)
+        print(f"\n{k} escalations -> "
+              f"{os.path.join(a.workspace, 'validation', 'queue.json')}")
 
 
 if __name__ == "__main__":
