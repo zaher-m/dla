@@ -297,3 +297,33 @@ ol.tight li strong,ul.tight li strong{color:var(--ink)}
 /* The viewer report's h1 is a filename, which can be one long unbreakable
    token; without this a narrow viewport scrolls horizontally. */
 #docTitle{overflow-wrap:anywhere;word-break:break-word}
+
+/* --- decisions ---------------------------------------------------------- */
+/* Accept, escalate and defer are three different things and must not read as
+   three steps of one accent.  They map onto the palette's existing semantic
+   tokens, which are already defined for both themes, rather than introducing
+   literals that would only work on one ground. */
+.decdot{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;border-radius:50%;
+  font-family:var(--disp);font-size:9px;font-weight:700;color:var(--surface);
+  margin-right:6px;flex:0 0 auto;cursor:help;
+}
+.decdot.acc{background:var(--good)}
+.decdot.esc{background:var(--warn)}
+.decdot.dfr{background:var(--ink-3)}
+.decdot.rej{background:var(--bad)}
+
+.decbar{display:flex;height:9px;border-radius:5px;overflow:hidden;
+  min-width:120px;background:var(--surface-3)}
+.decbar i{display:block;height:100%}
+.decbar .acc{background:var(--good)}
+.decbar .esc{background:var(--warn)}
+.decbar .dfr{background:var(--ink-3)}
+
+td.cchips{white-space:normal}
+.cchip{display:inline-flex;align-items:center;gap:5px;
+  padding:2px 7px;margin:2px 4px 2px 0;border-radius:11px;
+  border:1px solid var(--rule);font-family:var(--mono);font-size:11px;
+  font-variant-numeric:tabular-nums}
+.cchip b{color:var(--ink-3);font-weight:600}

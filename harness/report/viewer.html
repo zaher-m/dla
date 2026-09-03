@@ -16,7 +16,8 @@
   <div class="brandmark">DLA&nbsp;Suite <span>/ layout comparison</span></div>
   <nav class="navlinks">
     <a href="#viewer">Orbit</a><a href="#counts">Per-page counts</a>
-    <a href="#metrics">Metrics</a><a href="#systems">Systems</a>
+    <a href="#metrics">Metrics</a><a href="#validation">Decisions</a>
+    <a href="#systems">Systems</a>
   </nav>
   <button class="tbtn" id="themeBtn" type="button">Theme</button>
 </div></div>
@@ -107,6 +108,20 @@
   columns will be empty; the visual comparison above still works.</p>
   <div class="tablewrap"><table id="metricTable"></table></div>
   <p class="small" style="margin-top:16px" id="metricNote"></p>
+</div></section>
+
+<section id="validation"><div class="wrap-wide">
+  <div class="eyebrow">Safe to write, or not</div>
+  <h2>What each system's pages were decided to be</h2>
+  <p class="sect-lede">Every page is checked against the structure the PDF
+  itself declares and then decided: <b>accepted</b> and written downstream,
+  <b>escalated</b> to a reviewer with the reason in words, or <b>deferred</b>
+  because this pipeline handles born-digital pages and that page is not one.
+  A page escalates when a blocking check fires <em>or</em> when a blocking check
+  could not run — an unavailable check is never read as a pass.</p>
+  <p class="sect-lede" id="valPolicy"></p>
+  <div class="tablewrap"><table id="valTable"></table></div>
+  <p class="small" style="margin-top:16px" id="valNote"></p>
 </div></section>
 
 <section id="systems"><div class="wrap-wide">

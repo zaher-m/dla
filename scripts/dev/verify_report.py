@@ -46,12 +46,23 @@ def main():
             n = lambda sel: page.eval_on_selector_all(sel, "e=>e.length")
             counts = {"satellites": n(".sat"), "systemCards": n(".syscard"),
                       "metricRows": n("#metricTable tbody tr"),
-                      "pageChips": n("#pageStrip *")}
+                      "pageChips": n("#pageStrip *"),
+                      "decisionRows": n("#valTable tbody tr"),
+                      "decisionDots": n(".sat .decdot")}
             print(f"[{scheme}] {counts}  title={page.title()!r}")
             if errs:
                 failures.append(f"{scheme}: {errs[:5]}")
             if counts["satellites"] < a.min_satellites:
                 failures.append(f"{scheme}: only {counts['satellites']} orbit panels")
+            # The decisions section hides itself when a job ran no validate
+            # stage.  Hidden is fine; present-but-empty means the renderer broke
+            # on data that is there, which is the failure worth catching.
+            shown = page.eval_on_selector(
+                "#validation", "e=>getComputedStyle(e).display!=='none'")
+            if shown and not counts["decisionRows"]:
+                failures.append(f"{scheme}: decisions section is shown but empty")
+            if counts["decisionRows"] and not counts["decisionDots"]:
+                failures.append(f"{scheme}: pages were decided but no panel says so")
 
             for w in WIDTHS:
                 page.set_viewport_size({"width": w, "height": 900})

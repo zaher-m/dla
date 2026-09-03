@@ -242,7 +242,7 @@ function renderOrbit(){
     const nm=shortName(s);
     html+=`<div class="sat" data-sys="${s.id}" style="left:${x}px;top:${y}px;width:${w}px">
       <div class="sat-hd"><span class="t">${esc(nm.b||nm.a)}<small>${esc(nm.a)} · ring ${sl.ring+1}·${sl.slot+1}</small></span>
-        <span class="n">${n}</span></div>
+        ${decBadge(page.id,s.id)}<span class="n">${n}</span></div>
       <div class="sat-fig"><img src="${page.img}" alt="">${overlaySVG(page,s.id,w*1.2)}</div>
       <div class="sat-mx"><span>recall <b>${pct(m.text_or_table_recall)}</b></span>
         <span>prec <b>${pct(m.text_precision)}</b></span>
@@ -423,6 +423,17 @@ renderCounts();
     cols.map(c=>cell(s.ratings[c])).join('')+'</tr>').join('')+'</tbody>';
 })();
 
+/* One page, one system: what the validate stage decided, as a dot on the panel.
+   A word not a colour alone -- the title carries the reason, because the reason
+   is the part a person can act on. */
+function decBadge(pid,sid){
+  const p=((D.validation||{}).pages||{})[pid]||{},d=p[sid];
+  if(!d)return '';
+  const k={accept:'acc',escalate:'esc',defer:'dfr',reject:'rej'}[d.decision]||'';
+  const t=d.decision+(d.task?' · '+d.task:'')+(d.reason?' — '+d.reason:'');
+  return `<span class="decdot ${k}" title="${esc(t)}">${d.decision[0].toUpperCase()}</span>`;
+}
+
 /* ================= METRIC TABLE ================= */
 const MCOLS=[{k:'_name',t:'Model'},
  {k:'text_recall',t:'Text recall',hi:1},{k:'text_or_table_recall',t:'Text+table recall',hi:1},
@@ -466,6 +477,64 @@ function buildMetricTable(){
     buildMetricTable();}));
 }
 buildMetricTable();
+
+/* ================= DECISIONS =================
+   The validate stage's summary, if the job ran one.  Deliberately reported as
+   three shares and the checks that caused them, not as a score: a reviewer acts
+   on "content was missed", never on 0.62.  These shares bound how much review a
+   corpus costs.  They do not establish how often an accepted page is wrong --
+   that needs annotated pages, and the note below says so rather than letting a
+   confident-looking table imply otherwise. */
+(function(){
+  if(!have('#valTable'))return;
+  const V0=D.validation||{},sys=V0.systems||{};
+  const ids=Object.keys(sys);
+  const sec=document.getElementById('validation');
+  if(!ids.length){if(sec)sec.style.display='none';return;}
+  const pol=V0.policy||{};
+  $('#valPolicy').innerHTML='In force for this run: regions routed to header,'+
+    ' footer or other discarded furniture are <b>'+esc(pol.discard||'?')+'d</b>'+
+    (pol.discard==='archive'?' — recoverable, so mislabelling body text as'+
+      ' furniture is a retrieval miss rather than a loss, and does not block a'+
+      ' page':' — deleted at write time, so mislabelling body text as furniture'+
+      ' is permanent and blocks a page')+
+    '. A page whose text layer cannot be trusted is <b>'+esc(pol.unusable||'?')+
+    'red</b>.'+((pol.risk&&(pol.risk.escalate!==null))?'':
+    ' The risk score orders the review queue and decides nothing: its weights'+
+    ' are hand-set, and an invented weight sum is not grounds for holding back'+
+    ' a page.');
+
+  const name=id=>{const s=(D.systems||[]).find(x=>x.id===id);return s?s.display:id;};
+  const bar=(a,e,f)=>{const t=Math.max(a+e+f,1);const w=x=>(100*x/t).toFixed(1)+'%';
+    return `<div class="decbar" title="${a} accepted · ${e} escalated · ${f} deferred">`+
+      `<i class="acc" style="width:${w(a)}"></i><i class="esc" style="width:${w(e)}"></i>`+
+      `<i class="dfr" style="width:${w(f)}"></i></div>`;};
+  const rows=ids.map(id=>{
+    const v=sys[id],d=v.decisions||{};
+    return {id,v,a:d.accept||0,e:d.escalate||0,f:d.defer||0,r:d.reject||0};
+  }).sort((x,y)=>y.a/Math.max(y.v.pages,1)-x.a/Math.max(x.v.pages,1));
+
+  $('#valTable').innerHTML='<thead><tr><th>Model</th><th>Pages</th>'+
+    '<th>Accepted</th><th>Escalated</th><th>Deferred</th><th>Mix</th>'+
+    '<th>What escalated them</th></tr></thead><tbody>'+
+    rows.map(r=>{
+      const by=Object.entries(r.v.escalated_by||{}).slice(0,4)
+        .map(([k,n])=>`<span class="cchip">${esc(k)}<b>${n}</b></span>`).join('')||'—';
+      return `<tr><td class="name">${esc(name(r.id))}<span class="repo">${esc(r.id)}</span></td>`+
+        `<td class="num">${r.v.pages}</td>`+
+        `<td class="num">${pct(r.v.accept_rate)}</td>`+
+        `<td class="num">${pct(r.v.escalate_rate)}</td>`+
+        `<td class="num">${r.f?pct(r.f/r.v.pages):'—'}</td>`+
+        `<td>${bar(r.a,r.e,r.f+r.r)}</td><td class="cchips">${by}</td></tr>`;
+    }).join('')+'</tbody>';
+
+  const tot=rows.reduce((n,r)=>n+r.v.pages,0),esc_=rows.reduce((n,r)=>n+r.e,0);
+  $('#valNote').textContent='Across '+rows.length+' system'+(rows.length>1?'s':'')+
+    ' and '+tot+' decided pages, '+(100*esc_/Math.max(tot,1)).toFixed(1)+
+    '% escalated. That is a review cost, not an error rate: these checks are'+
+    ' fitted to bound how often they fire, and how often an accepted page is'+
+    ' nonetheless wrong cannot be measured without annotated pages.';
+})();
 
 /* ================= SCATTER + PERF ================= */
 function drawScatter(){
