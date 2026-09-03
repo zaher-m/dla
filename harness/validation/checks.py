@@ -24,6 +24,9 @@ from collections import Counter, defaultdict
 import numpy as np
 import yaml
 
+from validation import assemble as assemblemod
+from validation import compare as comparemod
+from validation import psr_layout as psrlayout
 from validation import tables as tablemod
 from validation.buckets import bucket as to_bucket, TEXT, TABLE, MEDIA, DISCARD
 
@@ -74,6 +77,7 @@ DEFAULTS = {
     "coverage_floor": 0.40,
     "excess_band_transitions": 2,
     "order_inversions": 2,
+    "order_tau": 0.90,
     "aspect_ratio": 60.0,
 }
 
@@ -519,6 +523,38 @@ def c4_02(x):
 
 
 # ------------------------------------------------------- C5  duplication ----
+@check("C4-07", MAJOR, "C4", needs=("psr", "reference_stream"))
+def c4_07(x):
+    """The reading order disagrees with the order the page itself implies.
+
+    Runs only where the model supplied an order of its own.  Where it did not,
+    the pipeline derives one from the page geometry -- and so does the reference,
+    so the check would be comparing a derivation against itself and reporting
+    the difference in region granularity as a reading-order error.  It fired on
+    31% of pages that way, across four systems none of which emits an order at
+    all.
+
+    Where a model does supply one this is the only order check that survives on
+    a single-column page, which after the column bands were corrected is nearly
+    every page here.  The reference is heuristic, so this is a feature and not a
+    gate: it catches a right-to-left page read left to right, or two flows
+    interleaved, without claiming authority in a disputed case.
+    """
+    if x["stream"]["order_source"] != "model":
+        return
+    c = comparemod.compare(x["stream"], x["reference_stream"], psr=x["psr"])
+    tau = c.get("order_tau")
+    if tau is None:
+        return
+    if tau < x["t"]["order_tau"]:
+        inv = c.get("order_inversion_rate") or 0.0
+        return [_f("C4-07", MAJOR,
+                   f"reading order disagrees with the page's own geometry: "
+                   f"{inv:.0%} of line pairs are read in the opposite order "
+                   f"(tau {tau:.3f}, order from the {x['stream']['order_source']})",
+                   value=round(tau, 4))]
+
+
 @check("C5-01", MAJOR, "C5", needs=())
 def c5_01(x):
     """Two same-bucket regions overlapping substantially."""
@@ -760,7 +796,7 @@ def context(regions, psr, stream, route, t=None):
     orphan_body = [k for k, L in enumerate(body)
                    if owner[ix.get(tuple(round(v, 2) for v in L), 0)] is None] if body else []
 
-    return {
+    ctx = {
         "regions": regions, "psr": psr, "stream": stream, "route": route, "t": t,
         "W": W, "H": H, "all_lines": all_lines, "body_lines": body,
         "line_h": float(np.median(heights)),
@@ -777,6 +813,17 @@ def context(regions, psr, stream, route, t=None):
         "orphan_body": orphan_body,
         "orphan_content": _outside_margins(body, orphan_body, H, t["margin_band"]),
     }
+    # The order the PDF itself implies, for C4-07.  Built here rather than in
+    # the check so the cost is paid once per page even if more order checks
+    # arrive later.
+    try:
+        ref_regions, meta = psrlayout.build(psr)
+        ctx["reference_stream"] = (
+            assemblemod.assemble(ref_regions, psr, route.get("direction", "ltr"))
+            if meta["confidence"] == "usable" else None)
+    except Exception:
+        ctx["reference_stream"] = None
+    return ctx
 
 
 def available(x):
@@ -812,6 +859,13 @@ def available(x):
         na.add("graphics")
     if x["stream"]:
         have.add("stream")
+    # An order check needs both a reference and an order the model actually
+    # produced.  A derived order is the pipeline's own work, not the model's,
+    # and checking it against another derivation says nothing.
+    if x.get("reference_stream") and x["stream"]["order_source"] == "model":
+        have.add("reference_stream")
+    else:
+        na.add("reference_stream")
     return have, na
 
 

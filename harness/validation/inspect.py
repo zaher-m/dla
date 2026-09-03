@@ -49,16 +49,37 @@ def collect(ws, corpus, system, check_id):
         res = checks.run(regions, psr, stream, r)
         for fd in res["findings"]:
             if fd["id"] == check_id:
-                hits.append((pid, psr, regions, fd))
+                hits.append((pid, psr, regions, fd, stream))
     return hits
 
 
-def sheet(ws, hits, out, cols=3, rows=2, seed=0, psr_key=None):
+def _draw_order(dr, stream, colour=(230, 60, 0)):
+    """The predicted reading sequence, as a numbered path between block centres.
+
+    A box overlay cannot show an order error at all -- the boxes are identical
+    whichever sequence they are read in -- so an order finding is unverifiable
+    without this.
+    """
+    pts = []
+    for b in sorted(stream["blocks"], key=lambda x: x["rank"]):
+        if not b["lines"]:
+            continue
+        x1, y1, x2, y2 = b["bbox"]
+        pts.append(((x1 + x2) / 2, (y1 + y2) / 2))
+    if len(pts) > 1:
+        dr.line(pts, fill=colour, width=7)
+    for n, (px, py) in enumerate(pts, 1):
+        dr.ellipse([px - 22, py - 22, px + 22, py + 22], fill=(255, 255, 255),
+                   outline=colour, width=5)
+        dr.text((px - 8, py - 8), str(n), fill=colour)
+
+
+def sheet(ws, hits, out, cols=3, rows=2, seed=0, psr_key=None, order=False):
     pick = hits if len(hits) <= cols * rows else random.Random(seed).sample(
         hits, cols * rows)
     img = Image.new("RGB", (CELL * cols, CELL * rows), "white")
     dr = ImageDraw.Draw(img)
-    for n, (pid, psr, regions, fd) in enumerate(pick):
+    for n, (pid, psr, regions, fd, stream) in enumerate(pick):
         page = Image.open(os.path.join(ws, "working", "pages_300dpi",
                                        pid + ".png")).convert("RGB")
         d2 = ImageDraw.Draw(page)
@@ -72,6 +93,8 @@ def sheet(ws, hits, out, cols=3, rows=2, seed=0, psr_key=None):
         for i, r in enumerate(regions):
             d2.rectangle(r["bbox"], outline=RED if i in named else GREEN,
                          width=9 if i in named else 3)
+        if order:
+            _draw_order(d2, stream)
         page.thumbnail((CELL - 10, CELL - 40))
         x, y = (n % cols) * CELL, (n // cols) * CELL
         img.paste(page, (x + 5, y + 34))
@@ -91,9 +114,12 @@ def main():
     ap.add_argument("--psr", nargs="*", default=[],
                     help="PSR keys to draw in blue, e.g. gutters column_bands")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--order", action="store_true",
+                    help="draw the predicted reading sequence")
     a = ap.parse_args()
     hits = collect(a.workspace, a.corpus, a.system, a.check)
-    n, tot = sheet(a.workspace, hits, a.out, seed=a.seed, psr_key=a.psr)
+    n, tot = sheet(a.workspace, hits, a.out, seed=a.seed, psr_key=a.psr,
+                   order=a.order)
     print(f"{a.check}: {tot} findings, rendered {n} -> {a.out}")
 
 
