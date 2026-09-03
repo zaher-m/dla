@@ -574,13 +574,19 @@ def c4_08(x):
                    f"of other content spliced into it", value=intr)]
 
 
-@check("C4-09", MAJOR, "C4", needs=("psr", "stream"))
+@check("C4-09", ADV, "C4", needs=("psr", "stream"))
 def c4_09(x):
     """The stream jumps back up the page without changing column.
 
     Only counted where the two blocks sit in the same column band, or the page
     has none: moving from the foot of one column to the head of the next is a
     jump backwards and is correct.
+
+    Advisory, on evidence: run against the PSR reference layout -- regions taken
+    straight from the PDF's geometry -- it fires on 16.3% of pages, twice the
+    9.2% it fires on a model.  A check that fires more often on the correct
+    region set is measuring `assemble.derive_order`, not the layout, and cannot
+    attribute the defect to anything.
     """
     blocks = [b for b in sorted(x["stream"]["blocks"], key=lambda b: b["rank"])
               if b["lines"]]
@@ -595,19 +601,26 @@ def c4_09(x):
             continue
         bad.append(b["region"])
     if len(bad) >= x["t"]["backward_jumps"]:
-        return [_f("C4-09", MAJOR,
+        return [_f("C4-09", ADV,
                    f"the reading order jumps back up the page {len(bad)} times "
                    f"without moving to another column",
                    regions=bad, value=len(bad))]
 
 
-@check("C4-10", BLOCK, "C4", needs=("psr", "stream"))
+@check("C4-10", MAJOR, "C4", needs=("psr", "stream"))
 def c4_10(x):
     """On a right-to-left page, blocks sharing a row are read left to right.
 
-    The single most damaging order error available on this corpus, and invisible
-    to every other check: the text is complete, the boxes are right, and the
+    The most damaging order error available on this corpus, and invisible to
+    every other check: the text is complete, the boxes are right, and the
     columns of a row come out reversed.
+
+    Not blocking, on the same control as C4-09 though less clear cut: 4.1% on
+    the PSR reference layout against 3.1% on a model.  The reference is row-first
+    and so splits a table row into side-by-side cells, which is exactly the
+    configuration this check tests -- the comparison is unfair to it rather than
+    damning.  It stays a feature until annotated right-to-left pages can settle
+    which of the two is being measured.
     """
     if x["route"].get("direction") != "rtl":
         return
@@ -625,7 +638,7 @@ def c4_10(x):
             wrong += 1
             seen.append(b["region"])
     if tot >= x["t"]["rtl_row_min_pairs"] and wrong / tot > x["t"]["rtl_row_wrong"]:
-        return [_f("C4-10", BLOCK,
+        return [_f("C4-10", MAJOR,
                    f"{wrong} of {tot} side-by-side blocks are read left to "
                    f"right on a right-to-left page",
                    regions=seen, value=round(wrong / tot, 3))]

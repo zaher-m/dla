@@ -60,13 +60,29 @@ def derive_order(regions, psr, direction="ltr"):
     reversed for right-to-left pages, which is the single decision that a
     per-page language guess gets wrong on numeric tables -- hence `direction`
     is supplied by the document, never inferred here.
+
+    Reversing the bands is not on its own enough.  Two regions sharing a row
+    inside one band, or falling outside every band, are ordered by the sort
+    below, and sorting them by left edge reads an Arabic row backwards.  So the
+    horizontal key mirrors for RTL, exactly as the line key in `assemble` does
+    -- the two disagreeing was a real defect: on a corpus where no model emits
+    a reading order, this function *is* the pipeline's reading order.
     """
     W = psr["width"]
     bands = psr.get("column_bands") or []
+    rtl = direction == "rtl"
+    # Rows are quantised before the horizontal key applies.  Two cells of one
+    # table row differ by a point or two at the top edge, and on exact y they
+    # sort by that jitter rather than by position, which discards the direction
+    # key entirely on the pages that need it most.
+    hs = [L[3] - L[1] for L in psr.get("text_lines") or []]
+    q = max(float(np.median(hs)) * 0.6, 1.0) if hs else 6.0
     order = sorted(range(len(regions)),
-                   key=lambda i: (regions[i]["bbox"][1], regions[i]["bbox"][0]))
+                   key=lambda i: (round(regions[i]["bbox"][1] / q),
+                                  -regions[i]["bbox"][2] if rtl
+                                  else regions[i]["bbox"][0]))
     band_seq = list(range(len(bands)))
-    if direction == "rtl":
+    if rtl:
         band_seq.reverse()
 
     out, pending = [], {b: [] for b in band_seq}
