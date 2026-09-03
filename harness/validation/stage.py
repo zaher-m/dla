@@ -9,6 +9,7 @@ products the rest of the system consumes:
 
     validation/decisions/<system>.json   one record per page, the full evidence
     validation/queue.json                the reviewer's work, escalations only
+    validation/deferred.json             pages this pipeline cannot process yet
     validation/summary.json              small enough for a report bundle
 
 The three files are the interface.  Nothing downstream imports this package: a
@@ -46,6 +47,7 @@ def summarise(decisions, policy):
             "decisions": dict(c),
             "accept_rate": round(c["accept"] / n, 4),
             "escalate_rate": round(c["escalate"] / n, 4),
+            "defer_rate": round(c["defer"] / n, 4),
             "tasks": dict(tasks),
             "fired": dict(fired.most_common()),
             "escalated_by": dict(blocked.most_common()),
@@ -62,10 +64,10 @@ def summarise(decisions, policy):
 
 
 def write(ws, decisions, policy):
-    d = os.path.join(ws, "validation")
-    os.makedirs(os.path.join(d, "decisions"), exist_ok=True)
+    d_ = os.path.join(ws, "validation")
+    os.makedirs(os.path.join(d_, "decisions"), exist_ok=True)
     for s, rows in decisions.items():
-        with open(os.path.join(d, "decisions", s + ".json"), "w", encoding="utf8") as f:
+        with open(os.path.join(d_, "decisions", s + ".json"), "w", encoding="utf8") as f:
             json.dump({"schema": SCHEMA, "system": s, "pages": rows}, f, indent=1)
 
     queue = [{"system": s, "page_id": r["page_id"], "doc": r["doc"],
@@ -78,11 +80,36 @@ def write(ws, decisions, policy):
              for s, rows in decisions.items() for r in rows
              if r["decision"] == "escalate"]
     queue.sort(key=lambda q: (q["task"], -q["risk"]))
-    with open(os.path.join(d, "queue.json"), "w", encoding="utf8") as f:
+    with open(os.path.join(d_, "queue.json"), "w", encoding="utf8") as f:
         json.dump({"schema": SCHEMA, "tasks": queue}, f, indent=1)
 
+    # The backlog.  A deferred page is not a failure and not a pass: it is work
+    # this pipeline does not do yet, and without a list of it "deferred for now"
+    # quietly becomes "dropped".  Keyed by page rather than by system, because
+    # the reason is a property of the file and every system on that page shares
+    # it.  This is the input the scanned path will be built against.
+    seen, deferred = set(), []
+    for rows in decisions.values():
+        for r in rows:
+            if r["decision"] != "defer" or r["page_id"] in seen:
+                continue
+            seen.add(r["page_id"])
+            deferred.append({"page_id": r["page_id"], "doc": r["doc"],
+                             "page_kind": r["page_kind"],
+                             "psr_trust": r["psr_trust"],
+                             "reason": r["reason"]})
+    deferred.sort(key=lambda d: (d["doc"] or "", d["page_id"]))
+    by_doc = Counter(d["doc"] for d in deferred)
+    with open(os.path.join(d_, "deferred.json"), "w", encoding="utf8") as f:
+        json.dump({"schema": SCHEMA, "n_pages": len(deferred),
+                   "by_reason": dict(Counter(x["reason"] for x in deferred)),
+                   "by_document": dict(by_doc.most_common()),
+                   "pages": deferred}, f, indent=1)
+
     summary = summarise(decisions, policy)
-    with open(os.path.join(d, "summary.json"), "w", encoding="utf8") as f:
+    summary["deferred"] = {"n_pages": len(deferred),
+                           "by_reason": dict(Counter(x["reason"] for x in deferred))}
+    with open(os.path.join(d_, "summary.json"), "w", encoding="utf8") as f:
         json.dump(summary, f, indent=1)
     return summary, len(queue)
 
@@ -118,8 +145,13 @@ def main():
           f"unusable={policy['unusable']}")
     for s, v in sorted(summary["systems"].items()):
         print(f"  {s:30s} {v['pages']:4d} pages  accept {v['accept_rate']:5.1%}  "
-              f"escalate {v['escalate_rate']:5.1%}")
+              f"escalate {v['escalate_rate']:5.1%}  defer {v['defer_rate']:5.1%}")
     print(f"[validation] {n} escalations -> {os.path.join(ws, 'validation', 'queue.json')}")
+    dfr = summary.get("deferred") or {}
+    if dfr.get("n_pages"):
+        why = ", ".join(f"{k} ({v})" for k, v in dfr["by_reason"].items())
+        print(f"[validation] {dfr['n_pages']} page(s) deferred, awaiting a path "
+              f"this pipeline does not have: {why}")
 
 
 if __name__ == "__main__":

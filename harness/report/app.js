@@ -529,11 +529,26 @@ buildMetricTable();
     }).join('')+'</tbody>';
 
   const tot=rows.reduce((n,r)=>n+r.v.pages,0),esc_=rows.reduce((n,r)=>n+r.e,0);
-  $('#valNote').textContent='Across '+rows.length+' system'+(rows.length>1?'s':'')+
+  // The deferred backlog is stated separately and by reason, because the two
+  // reasons need different work: a scan needs OCR, while a born-digital page
+  // whose glyphs were converted to vector outlines is not a scan at all and
+  // will not be fixed by adding one.
+  const dfr=V0.deferred||{};
+  let note='Across '+rows.length+' system'+(rows.length>1?'s':'')+
     ' and '+tot+' decided pages, '+(100*esc_/Math.max(tot,1)).toFixed(1)+
     '% escalated. That is a review cost, not an error rate: these checks are'+
     ' fitted to bound how often they fire, and how often an accepted page is'+
     ' nonetheless wrong cannot be measured without annotated pages.';
+  if(dfr.n_pages){
+    const phrase={'scanned page':'scanned',
+                  'no usable text layer':'born-digital but with no extractable text'};
+    const parts=Object.entries(dfr.by_reason||{}).map(([k,n])=>{
+      const key=k.replace(/:.*$/,'');return n+' '+(phrase[key]||key);});
+    note+=' A further '+dfr.n_pages+' page'+(dfr.n_pages>1?'s were':' was')+
+      ' deferred rather than decided — '+parts.join(', ')+
+      ' — and awaits a path this pipeline does not have yet.';
+  }
+  $('#valNote').textContent=note;
 })();
 
 /* ================= SCATTER + PERF ================= */
