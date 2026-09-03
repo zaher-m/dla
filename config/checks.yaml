@@ -52,3 +52,55 @@ compare:
   cross_merge_rate: 0.25          # grouped line pairs spanning a column, table or figure boundary
   bucket_move_rate: 0.35          # of lines the reference can vouch for, share sent to the wrong store
   excess_band_transitions: 2      # column changes beyond what the page structure allows
+
+# --- C1-C8: the deterministic checks -------------------------------------
+#
+# Fitted on a uniform random sample of 120 pages (seed 7) from 35 documents,
+# scored against 3 systems = 360 (system, page) pairs.  Random rather than
+# stratified on purpose: the benchmark's 29 pages were chosen to be hard, so
+# rates measured there describe the hard end of the corpus, not the corpus.
+#
+# As with the compare thresholds these bound the escalation rate, they do not
+# establish a false-accept rate.  That needs annotated pages.
+checks:
+  # C1 coverage.  Margin lines are excluded: content in the top/bottom 8% is
+  # running furniture the pipeline discards anyway, and it was 22% of all
+  # uncovered lines.
+  margin_band: 0.08
+  orphan_line_rate: 0.12
+  orphan_area_rate: 0.12
+  orphan_cluster: 6
+  orphan_in_column: 8
+  footnote_band: 0.12
+  footnote_lines: 4
+  graphic_miss_area: 0.02
+  graphic_miss_count: 2
+
+  # C2 boundaries
+  line_cut_rate: 0.15
+
+  # C3 columns
+  gutter_cover: 0.6
+  band_span: 0.2
+  band_imbalance: 0.85
+
+  # C4 order
+  excess_band_transitions: 2
+
+  # C5 duplication
+  overlap_frac: 0.50
+  overlap_regions: 6
+  double_emit_rate: 0.02
+
+  # C6 buckets
+  grid_cover: 0.5
+  media_text_lines: 5
+  media_graphic_frac: 0.15
+  discard_body_lines: 3
+  discard_line_rate: 0.15
+
+  # C7 sanity
+  out_of_bounds: 0.02
+  page_dominating: 0.85
+  coverage_floor: 0.40
+  aspect_ratio: 60.0
