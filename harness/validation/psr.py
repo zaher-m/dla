@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """Build a PDF Structural Reference for a page without needing a workspace.
 
-`core.reference.build` reads a benchmark's `selected_pages.json` and writes a
-corpus-wide file.  Validation needs the same reference for one arbitrary page of
-one uploaded document, so this wraps `core.reference.page_reference` with the
-render-size convention the rest of the pipeline uses: pixel dimensions come from
-the same `get_pixmap(dpi=...)` call that produces the image every model sees, so
-that geometry from a model and geometry from the PDF land in the same space.
+`validation.reference.page_reference` needs a page and a render size.  This
+supplies the render-size convention the pipeline uses: pixel dimensions come
+from the same `get_pixmap(dpi=...)` call that produces the image every model
+sees, so that geometry from a model and geometry from the PDF land in the same
+space.  `core.reference.build` is the corpus-wide equivalent, over a benchmark's
+`selected_pages.json`; this one works on any page of any file.
 """
-import os, sys
-
 import fitz
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.reference import page_reference  # noqa: E402
+from validation.reference import page_reference
 
 DPI = 300
 
