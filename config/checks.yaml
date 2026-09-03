@@ -65,7 +65,15 @@ compare:
   contiguity_slack: 0.25
   backward_jumps: 3
   rtl_row_min_pairs: 3
-  rtl_row_wrong: 0.5      # column changes beyond what the page structure allows
+  rtl_row_wrong: 0.5
+
+  # C8 document consistency: a page judged against the rest of its own document
+  doc_min_pages: 5
+  running_rate: 0.8
+  # covers and section title pages carry no running furniture by design
+  doc_body_lines: 20
+  region_z: 4.0
+  font_shift: 0.4      # column changes beyond what the page structure allows
 
 # --- C1-C8: the deterministic checks -------------------------------------
 #
@@ -88,8 +96,15 @@ compare:
 #                                     C6-01 C6-05 C6-06
 #   verified, demoted to advisory     C2-06 C3-01 C6-03 C7-05
 #   fires zero times after fixing the column bands   C3-02 C4-03 C7-01 C7-04
-#   rendered but not yet reviewed     C1-05 C3-05 C4-09
+#   verified, guarded after review    C8-01
+#   page-novelty signals, not findings about a prediction: they read the PDF
+#   and never look at the model's output, so both are advisory   C8-02 C8-06
+#   rendered but not yet reviewed     C1-05 C3-05 C4-09 C8-03 C8-05
 #   specified but never implemented   C6-02 C6-04 C8-01..C8-06
+#
+# The C8 family needs several pages of one document, so it is inert on a
+# workspace that samples pages: measured on three whole documents (92 pages,
+# 4 systems) rather than on the random page sample.
 #
 # Reading order is only checkable where the model supplies one.  Of the four
 # systems measured on the random sample, none does, so C4-07 is n/a on 100% of
@@ -146,6 +161,14 @@ checks:
   backward_jumps: 3
   rtl_row_min_pairs: 3
   rtl_row_wrong: 0.5
+
+  # C8 document consistency: a page judged against the rest of its own document
+  doc_min_pages: 5
+  running_rate: 0.8
+  # covers and section title pages carry no running furniture by design
+  doc_body_lines: 20
+  region_z: 4.0
+  font_shift: 0.4
 
   # C5 duplication
   overlap_frac: 0.50

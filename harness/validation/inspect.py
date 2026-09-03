@@ -38,6 +38,8 @@ def collect(ws, corpus, system, check_id):
                                       "pdf_structural_reference.json")))
     routes = evaluate.routes_for(ws, corpus)
     norm = os.path.join(ws, "normalized_outputs", system)
+    profiles, docs = evaluate.doc_profiles(
+        ws, ref, routes, os.path.join(ws, "normalized_outputs"), [system])
     hits = []
     for pid, psr in ref.items():
         f = os.path.join(norm, pid + ".json")
@@ -46,7 +48,8 @@ def collect(ws, corpus, system, check_id):
             continue
         regions = json.load(open(f))["regions"]
         stream = assemble.assemble(regions, psr, direction=r["direction"])
-        res = checks.run(regions, psr, stream, r)
+        res = checks.run(regions, psr, stream, r,
+                         doc=profiles.get((system, docs.get(pid))))
         for fd in res["findings"]:
             if fd["id"] == check_id:
                 hits.append((pid, psr, regions, fd, stream))

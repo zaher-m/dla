@@ -22,7 +22,35 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import fitz  # noqa: E402
 
-from validation import assemble, checks, router, signals  # noqa: E402
+from validation import assemble, checks, document, router, signals  # noqa: E402
+
+
+def page_docs(ws):
+    """page_id -> source document, for the document-level checks."""
+    sel = json.load(open(os.path.join(ws, "inventory", "selected_pages.json")))
+    return {p["page_id"]: p["doc"] for p in sel}
+
+
+def doc_profiles(ws, ref, routes, norm, systems):
+    """Per (system, document) profile, built in a pass before any check runs.
+
+    The document checks compare a page against the rest of its own document, so
+    the profile has to exist before the first page is judged.
+    """
+    docs = page_docs(ws)
+    facts = defaultdict(list)
+    for pid, psr in ref.items():
+        r = routes.get(pid)
+        if r is None or r["psr_trust"] == "unusable":
+            continue
+        for s in systems:
+            f = os.path.join(norm, s, pid + ".json")
+            if not os.path.exists(f):
+                continue
+            regions = json.load(open(f))["regions"]
+            facts[(s, docs.get(pid))].append(
+                document.page_facts(regions, psr, checks.page_columns(psr)))
+    return {k: document.profile(v) for k, v in facts.items()}, docs
 
 
 def routes_for(ws, corpus, cache=True):
@@ -70,6 +98,7 @@ def evaluate(ws, corpus, systems=None):
                           if os.path.exists(os.path.join(norm, s, "_run.json"))
                           and json.load(open(os.path.join(norm, s, "_run.json"))
                                         ).get("status") == "ok"]
+    profiles, docs = doc_profiles(ws, ref, routes, norm, systems)
     fire, na, unver = Counter(), Counter(), Counter()
     per_sys = Counter(); per_sys_n = Counter(); per_sys_unver = Counter()
     kinds = Counter(); pairs = 0
@@ -92,7 +121,8 @@ def evaluate(ws, corpus, systems=None):
             pairs += 1
             regions = json.load(open(f))["regions"]
             stream = assemble.assemble(regions, psr, direction=r["direction"])
-            res = checks.run(regions, psr, stream, r)
+            res = checks.run(regions, psr, stream, r,
+                             doc=profiles.get((s, docs.get(pid))))
             for x in res["findings"]:
                 fire[x["id"]] += 1
             for x in res["inapplicable"]:

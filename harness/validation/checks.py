@@ -26,6 +26,7 @@ import yaml
 
 from validation import assemble as assemblemod
 from validation import compare as comparemod
+from validation import document as docmod
 from validation import psr_layout as psrlayout
 from validation import tables as tablemod
 from validation.buckets import bucket as to_bucket, TEXT, TABLE, MEDIA, DISCARD
@@ -83,6 +84,11 @@ DEFAULTS = {
     "backward_jumps": 3,
     "rtl_row_min_pairs": 3,
     "rtl_row_wrong": 0.5,
+    "doc_min_pages": 5,
+    "running_rate": 0.8,
+    "doc_body_lines": 20,
+    "region_z": 4.0,
+    "font_shift": 0.4,
     "aspect_ratio": 60.0,
 }
 
@@ -867,6 +873,102 @@ def c7_05(x):
                    value=round(r, 4))]
 
 
+# ------------------------------------------------------- C8  document -------
+#
+# These are the only checks that see more than one page.  Each compares a page
+# against what the rest of its own document looks like under the same system, so
+# a finding means "this page is unlike its neighbours", not "this page is unlike
+# what we expected".
+
+
+@check("C8-01", MAJOR, "C8", needs=("psr", "doc", "body_lines"))
+def c8_01(x):
+    """A running header or footer the document almost always has is missing.
+
+    Only on a page with a body.  Covers and section title pages carry no running
+    furniture by design, and every finding this produced without the guard was
+    one of those -- correct about the page and useless about the detector.
+    """
+    d = x["doc"]
+    if d["running_rate"] < x["t"]["running_rate"] or d["n_pages"] < x["t"]["doc_min_pages"]:
+        return
+    if len(x["body_lines"]) < x["t"]["doc_body_lines"]:
+        return
+    if not x["facts"]["running"]:
+        return [_f("C8-01", MAJOR,
+                   f"no running header or footer, on a document that has one on "
+                   f"{d['running_rate']:.0%} of its pages",
+                   value=round(d["running_rate"], 3))]
+
+
+# C8-02 and C8-06 read the PDF and never look at the prediction, so they cannot
+# be evidence about a detector -- a page can be unlike its document while the
+# layout for it is perfect.  They are page-novelty signals: useful as risk
+# features, and wrong as findings, so both are advisory.
+@check("C8-02", ADV, "C8", needs=("psr", "doc", "bands"))
+def c8_02(x):
+    """The column count differs from the rest of the document.
+
+    A property of the page, not of the prediction: it says this page is unlike
+    its neighbours, which is a reason to look, not a defect that was found.
+    """
+    d = x["doc"]
+    if d["n_pages"] < x["t"]["doc_min_pages"]:
+        return
+    got = x["facts"]["n_columns"]
+    if got != d["columns_mode"]:
+        return [_f("C8-02", ADV,
+                   f"{got} column(s) where the document normally has "
+                   f"{d['columns_mode']}", value=got)]
+
+
+@check("C8-03", ADV, "C8", needs=("psr", "doc"))
+def c8_03(x):
+    """The region count is a gross outlier against the document's own spread."""
+    d = x["doc"]
+    if d["n_pages"] < x["t"]["doc_min_pages"] or d["regions_std"] < 1:
+        return
+    z = abs(x["facts"]["n_regions"] - d["regions_mean"]) / d["regions_std"]
+    if z > x["t"]["region_z"]:
+        return [_f("C8-03", ADV,
+                   f"{x['facts']['n_regions']} regions against a document mean "
+                   f"of {d['regions_mean']:.0f} (z={z:.1f})", value=round(z, 2))]
+
+
+@check("C8-05", MAJOR, "C8", needs=("psr", "doc"))
+def c8_05(x):
+    """The class vocabulary collapsed on this page alone."""
+    d = x["doc"]
+    if d["n_pages"] < x["t"]["doc_min_pages"] or d["classes_median"] < 4:
+        return
+    if x["facts"]["classes"] <= 1 and x["facts"]["n_regions"] > 3:
+        return [_f("C8-05", MAJOR,
+                   f"every region on the page has the same class, on a document "
+                   f"that normally uses {d['classes_median']:.0f}",
+                   value=x["facts"]["classes"])]
+
+
+@check("C8-06", ADV, "C8", needs=("psr", "doc", "body_lines"))
+def c8_06(x):
+    """The body font size differs sharply from the rest of the document.
+
+    As with C8-02 this describes the page and not the prediction.  Rendering its
+    findings showed appendix dividers and note pages -- all genuinely unlike
+    their document, none of them a layout failure.
+    """
+    d = x["doc"]
+    got = x["facts"]["body_font"]
+    if d["n_pages"] < x["t"]["doc_min_pages"] or not got or not d["font_mode"]:
+        return
+    if len(x["body_lines"]) < x["t"]["doc_body_lines"]:
+        return
+    r = abs(got - d["font_mode"]) / d["font_mode"]
+    if r > x["t"]["font_shift"]:
+        return [_f("C8-06", ADV,
+                   f"body font {got:.0f}px against a document norm of "
+                   f"{d['font_mode']:.0f}px", value=round(r, 3))]
+
+
 # ------------------------------------------------------------- runner -------
 def _outside_margins(lines, idx, H, m):
     """Orphans in the top/bottom margin are running furniture the pipeline
@@ -875,7 +977,7 @@ def _outside_margins(lines, idx, H, m):
     return [i for i in idx if m * H <= (lines[i][1] + lines[i][3]) / 2 <= (1 - m) * H]
 
 
-def context(regions, psr, stream, route, t=None):
+def context(regions, psr, stream, route, t=None, doc=None):
     t = t or load_thresholds()
     W, H = psr["width"], psr["height"]
     all_lines = psr["text_lines"]
@@ -913,7 +1015,9 @@ def context(regions, psr, stream, route, t=None):
         "region_lines": [region_lines.get(i, []) for i in range(len(regions))],
         "orphan_body": orphan_body,
         "orphan_content": _outside_margins(body, orphan_body, H, t["margin_band"]),
+        "doc": doc,
     }
+    ctx["facts"] = docmod.page_facts(regions, psr, ctx["bands"], t["margin_band"])
     # The order the PDF itself implies, for C4-07.  Built here rather than in
     # the check so the cost is paid once per page even if more order checks
     # arrive later.
@@ -963,6 +1067,10 @@ def available(x):
     # An order check needs both a reference and an order the model actually
     # produced.  A derived order is the pipeline's own work, not the model's,
     # and checking it against another derivation says nothing.
+    if x.get("doc"):
+        have.add("doc")
+    else:
+        na.add("doc")            # a single page cannot be unlike its document
     if x.get("reference_stream") and x["stream"]["order_source"] == "model":
         have.add("reference_stream")
     else:
@@ -970,8 +1078,8 @@ def available(x):
     return have, na
 
 
-def run(regions, psr, stream, route, t=None):
-    x = context(regions, psr, stream, route, t)
+def run(regions, psr, stream, route, t=None, doc=None):
+    x = context(regions, psr, stream, route, t, doc)
     have, na = available(x)
     findings, skipped, inapplicable = [], [], []
     for c in REGISTRY:
