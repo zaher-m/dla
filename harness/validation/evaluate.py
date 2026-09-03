@@ -25,9 +25,20 @@ import fitz  # noqa: E402
 from validation import assemble, checks, router, signals  # noqa: E402
 
 
-def routes_for(ws, corpus):
-    """Route every selected page through the real router."""
-    sel = json.load(open(os.path.join(ws, "inventory", "selected_pages.json")))
+def routes_for(ws, corpus, cache=True):
+    """Route every selected page through the real router.
+
+    Cached in the workspace: routing reads every page of every source document
+    to establish text direction, which costs about a minute on a 35-document
+    corpus and is paid again by every tool that needs a route.
+    """
+    path = os.path.join(ws, "inventory", "page_routes.json")
+    sel_path = os.path.join(ws, "inventory", "selected_pages.json")
+    if cache and os.path.exists(path) and \
+            os.path.getmtime(path) >= os.path.getmtime(sel_path):
+        with open(path, encoding="utf8") as f:
+            return json.load(f)
+    sel = json.load(open(sel_path))
     by_doc = defaultdict(list)
     for p in sel:
         by_doc[p["doc"]].append(p)
@@ -44,6 +55,9 @@ def routes_for(ws, corpus):
                 out[p["page_id"]] = router.route(sigs[p["page"] - 1], t, ctx)
         finally:
             d.close()
+    if cache:
+        with open(path, "w", encoding="utf8") as f:
+            json.dump(out, f)
     return out
 
 

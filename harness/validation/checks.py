@@ -65,6 +65,7 @@ DEFAULTS = {
     "grid_cover": 0.5,
     "media_text_lines": 5,
     "media_graphic_frac": 0.15,
+    "media_max_text_frac": 0.18,
     "discard_body_lines": 3,
     "discard_line_rate": 0.15,
     "out_of_bounds": 0.02,
@@ -582,19 +583,34 @@ def c6_01(x):
                    f"will be stored as prose", value=len(miss))]
 
 
-@check("C6-03", BLOCK, "C6", needs=("psr",))
+# Demoted from BLOCK.  Three formulations were rendered -- line count against
+# filtered graphics, text density, then line count against raw graphics -- and
+# every finding any of them produced was a chart the detector had boxed
+# correctly.  The failure it targets is severe (text sent to object storage
+# never reaches the index) so it is kept as a feature, but nothing has shown it
+# can identify that failure, and it must not gate a page until something does.
+@check("C6-03", ADV, "C6", needs=("psr",))
 def c6_03(x):
-    """A figure region that is really text -- content sent to object storage."""
+    """A figure region that is really text -- content sent to object storage.
+
+    Tested against the *unfiltered* graphic areas.  Two other attempts failed
+    here and both failed the same way, by flagging correctly boxed charts: text
+    density does not separate a chart from a mis-boxed paragraph at region
+    scale, because a chart's axis labels and legend are dense inside a tight
+    box.  What does separate them is whether any vector art or image sits under
+    the region at all.  A shaded table is filtered out of `figure_areas` for
+    other checks, but here it counts as graphic evidence, so a table boxed as a
+    figure is missed -- C6-01 and C6-02 are the checks for that.
+    """
     bad = []
     for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"])):
-        if b != MEDIA:
+        if b != MEDIA or len(x["region_lines"][i]) <= x["t"]["media_text_lines"]:
             continue
-        gfrac = max((_cover(r["bbox"], g) for g in x["graphics"]), default=0.0)
-        if len(x["region_lines"][i]) > x["t"]["media_text_lines"] \
-                and gfrac < x["t"]["media_graphic_frac"]:
+        gfrac = max((_cover(r["bbox"], g) for g in x["raw_graphics"]), default=0.0)
+        if gfrac < x["t"]["media_graphic_frac"]:
             bad.append(i)
     if bad:
-        return [_f("C6-03", BLOCK,
+        return [_f("C6-03", ADV,
                    f"{len(bad)} figure region(s) hold text and no graphic: that "
                    f"text leaves the index entirely", regions=bad, value=len(bad))]
 

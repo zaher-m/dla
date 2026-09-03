@@ -72,16 +72,17 @@ compare:
 # the pipeline does -- an earlier version of that tool did not, and showed
 # findings the pipeline would never emit.
 #
-#   verified, real                    C1-03
+#   verified, real                    C1-03 C1-04 C1-06
 #   verified, false positives fixed   C1-07 C2-01 C4-02 C5-01 C5-03
 #                                     C6-01 C6-05 C6-06
-#   verified, demoted to advisory     C2-06 C3-01
+#   verified, demoted to advisory     C2-06 C3-01 C6-03
 #   fires zero times after fixing the column bands   C3-02 C4-03 C7-01 C7-04
-#   still not rendered                C1-01 C1-02 C1-04 C1-05 C1-06 C3-05
-#                                     C6-04 C7-03 C7-05
+#   rendered but not yet reviewed     C1-01 C3-05 C7-05
+#   never rendered                    C1-02 C1-05 C6-04
 #
-# Of the nine checks examined closely, eight were substantially wrong.  Treat
-# the last group as unverified, not as working.
+# Fourteen checks were examined by rendering their findings.  Three were right;
+# eleven were wrong, of which eight were repaired and three demoted.  Assume the
+# unreviewed ones follow the same base rate.
 checks:
   # C1 coverage.  Margin lines are excluded: content in the top/bottom 8% is
   # running furniture the pipeline discards anyway, and it was 22% of all
@@ -125,6 +126,7 @@ checks:
   grid_cover: 0.5
   media_text_lines: 5
   media_graphic_frac: 0.15
+  media_max_text_frac: 0.18
   discard_body_lines: 3
   discard_line_rate: 0.15
 
