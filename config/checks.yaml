@@ -70,7 +70,8 @@ checks:
   orphan_line_rate: 0.12
   orphan_area_rate: 0.12
   orphan_cluster: 6
-  orphan_in_column: 8
+  orphan_in_column_rate: 0.12
+  orphan_column_min_lines: 20
   footnote_band: 0.12
   footnote_lines: 4
   graphic_miss_area: 0.02
@@ -92,7 +93,9 @@ checks:
   overlap_regions: 6
   double_emit_rate: 0.02
 
-  # C6 buckets
+  # C6 buckets.  C6-01 runs only against grids that qualify as tables under
+  # validation/tables.py -- on a random sample 90% of the "missed tables" a
+  # strong detector was charged with were charts, headers or framed prose.
   grid_cover: 0.5
   media_text_lines: 5
   media_graphic_frac: 0.15

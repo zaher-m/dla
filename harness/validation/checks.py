@@ -24,6 +24,7 @@ from collections import Counter, defaultdict
 import numpy as np
 import yaml
 
+from validation import tables as tablemod
 from validation.buckets import bucket as to_bucket, TEXT, TABLE, MEDIA, DISCARD
 
 BLOCK, MAJOR, ADV = "BLOCK", "MAJOR", "ADV"
@@ -45,7 +46,8 @@ DEFAULTS = {
     "orphan_area_rate": 0.12,
     "orphan_cluster": 6,
     "margin_band": 0.08,
-    "orphan_in_column": 8,
+    "orphan_in_column_rate": 0.12,
+    "orphan_column_min_lines": 20,
     "footnote_lines": 4,
     "graphic_miss_count": 2,
     "overlap_regions": 6,
@@ -162,13 +164,23 @@ def c1_03(x):
 
 @check("C1-04", BLOCK, "C1", needs=("psr", "body_lines", "bands"))
 def c1_04(x):
-    """Orphans inside a real text column, as opposed to page margins."""
-    n = sum(1 for i in x["orphan_content"]
-            if _band_of(x["body_lines"][i], x["bands"], x["W"]) is not None)
-    if n >= x["t"]["orphan_in_column"]:
+    """Orphans inside a real text column, as opposed to page margins.
+
+    Measured as a share of the lines in those columns, not as a count.  Eight
+    uncovered lines is a defect on a 40-line page and noise on a 300-line one,
+    and the count form fired on a quarter of a random sample.
+    """
+    inband = [i for i, L in enumerate(x["body_lines"])
+              if _band_of(L, x["bands"], x["W"]) is not None]
+    if len(inband) < x["t"]["orphan_column_min_lines"]:
+        return
+    orph = set(x["orphan_content"])
+    n = sum(1 for i in inband if i in orph)
+    r = n / len(inband)
+    if r > x["t"]["orphan_in_column_rate"]:
         return [_f("C1-04", BLOCK,
-                   f"{n} missed text lines fall inside a real text column",
-                   value=n)]
+                   f"{r:.0%} of the text inside real columns ({n} lines) was "
+                   f"missed", value=round(r, 4))]
 
 
 @check("C1-05", BLOCK, "C1", needs=("psr", "body_lines"))
@@ -390,8 +402,14 @@ def c5_03(x):
 # ------------------------------------------------------- C6  buckets --------
 @check("C6-01", BLOCK, "C6", needs=("psr", "grids"))
 def c6_01(x):
-    """A ruled table with no table region on it."""
-    miss = [g for g in x["grids"]
+    """A ruled table with no table region on it.
+
+    Runs against qualified grids only.  The raw PSR grid candidates are clusters
+    of ruling strokes filtered by size, and on a random sample 90% of the ones a
+    strong detector "missed" were charts, running headers, framed paragraphs or
+    empty boxes.  `tables.is_table_like` is what makes this check reportable.
+    """
+    miss = [g for g in x["table_grids"]
             if not any(_cover(g, r["bbox"]) > x["t"]["grid_cover"]
                        for r, b in zip(x["regions"], x["region_bucket"]) if b == TABLE)]
     if miss:
@@ -539,6 +557,7 @@ def context(regions, psr, stream, route, t=None):
         "bands": psr.get("column_bands") or [],
         "gutters": psr.get("gutters") or [],
         "grids": psr.get("grid_candidates") or [],
+        "table_grids": [q["bbox"] for q in tablemod.qualified(psr)],
         "graphics": psr.get("graphic_areas") or [],
         "region_bucket": [to_bucket(r.get("class")) for r in regions],
         "region_lines": [region_lines.get(i, []) for i in range(len(regions))],
@@ -570,10 +589,10 @@ def available(x):
         have.add("gutters")
     elif len(x["bands"]) <= 1:
         na.add("gutters")        # nothing to run between
-    if x["grids"]:
+    if x["table_grids"]:
         have.add("grids")
     else:
-        na.add("grids")          # the page has no ruled table to miss
+        na.add("grids")          # the page has no qualified table to miss
     if x["graphics"]:
         have.add("graphics")
     else:

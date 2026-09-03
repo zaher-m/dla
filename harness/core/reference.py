@@ -265,6 +265,10 @@ def page_reference(page, px_width, px_height):
         "table_text_lines": table_text,
         "image_rects": images, "graphic_areas": graphics,
         "ruling_h": len(hl), "ruling_v": len(vl), "grid_candidates": grid,
+        # The stroke geometry, not just the counts: deciding whether a ruled
+        # box is a table or a framed callout needs to know how many distinct
+        # rules it holds, and that cannot be recovered from a total.
+        "rules_h": hl, "rules_v": vl,
         "gutters": gutters, "column_bands": bands,
         "n_columns_est": max(len(bands), len(gutters) + 1),
         "body_font_px": round(body * sy, 2),
