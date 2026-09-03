@@ -1,0 +1,32 @@
+# `balanced` without the autoregressive VLM.
+#
+# surya.v2_layout is ~64 s/page against ~0.1-5 s/page for everything else: on a
+# corpus of any size it is 85% of the wall clock for 1 of 16 opinions. Dropping
+# it leaves every repository family, both mask producers, the RTL-aware
+# segmenter and the reading-order detector intact, so the comparison keeps its
+# shape at a fifth of the cost. Use `balanced` when the VLM's answer is the
+# question; use this for whole-document runs.
+name: balanced_novlm
+description: >
+  The balanced set minus surya.v2_layout — fifteen systems covering every
+  competitive repository family, instance masks, reading order and RTL-aware
+  segmentation, at roughly 11 s/page instead of 75.
+include:
+  # --- leading group -------------------------------------------------------
+  - docling.egret_xlarge
+  - docling.heron
+  - surya.fast_layout_t25            # keeps Surya's family and reading order
+  - paddleocr.pp_doclayoutv2
+  - mineru.pipeline
+  - ndl.layout                       # highest text recall measured; masks
+  # --- strong, independent families ---------------------------------------
+  - pek.doclayout_yolo
+  - dly.docstructbench_1280
+  - yolo_doclaynet.v26l
+  - yolo_v12.armaggheddon_yolo11m
+  - rfdetr.doclaynet
+  - rodla.doclaynet                  # never invents a region
+  - rapidlayout.y360_report          # CPU, best precision per byte
+  # --- capabilities nothing else supplies ----------------------------------
+  - paddleocr.pp_doclayoutv3         # instance masks on CPU
+  - kraken.blla_regions              # coverage ceiling, RTL-aware
