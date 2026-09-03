@@ -71,6 +71,7 @@ DEFAULTS = {
     "media_text_lines": 5,
     "media_graphic_frac": 0.15,
     "media_max_text_frac": 0.18,
+    "table_min_lines": 6,
     "discard_body_lines": 3,
     "discard_line_rate": 0.15,
     "out_of_bounds": 0.02,
@@ -746,6 +747,45 @@ def c6_01(x):
 # correctly.  The failure it targets is severe (text sent to object storage
 # never reaches the index) so it is kept as a feature, but nothing has shown it
 # can identify that failure, and it must not gate a page until something does.
+@check("C6-02", MAJOR, "C6", needs=("psr",))
+def c6_02(x):
+    """A table region with nothing about the page to support it.
+
+    The mirror of C6-01 and the more expensive error of the two in this
+    pipeline: a table that is really prose becomes rows in relational storage,
+    where a missed table merely becomes prose in the text index.  Evidence is
+    ruling lines, or rows made of several aligned cells.
+
+    Only the structural half of `tables.is_table_like` applies here.  That
+    function also bounds text density, but the band was fitted on grid
+    candidates -- a ruled area plus its padding -- and a model's box is drawn
+    tight around dense numerics, so the density test rejected five unmistakable
+    financial tables when it was carried across.  A calibration belongs to the
+    kind of box it was measured on.
+    """
+    bad = []
+    for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"])):
+        if b != TABLE or len(x["region_lines"][i]) < x["t"]["table_min_lines"]:
+            continue
+        if any(_cover(r["bbox"], g) > 0.5 or _cover(g, r["bbox"]) > 0.5
+               for g in x["grids"]):
+            continue
+        ev = tablemod.evidence(r["bbox"], x["psr"])
+        rows = ev["h_positions"] >= 3 or ev["n_rows"] >= 3
+        cols = ev["v_positions"] >= 2 or ev["multi_cell_rows"] >= 2
+        if not (rows and cols):
+            bad.append(i)
+    if bad:
+        return [_f("C6-02", MAJOR,
+                   f"{len(bad)} table region(s) sit on no ruling lines and no "
+                   f"repeated column structure: their content would be stored "
+                   f"as table rows", regions=bad, value=len(bad))]
+
+
+# C6-04 in the specification -- "a real graphic with no figure region" -- is the
+# same check as C1-07 and is not implemented twice.
+
+
 @check("C6-03", ADV, "C6", needs=("psr",))
 def c6_03(x):
     """A figure region that is really text -- content sent to object storage.

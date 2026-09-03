@@ -100,7 +100,8 @@ compare:
 #   page-novelty signals, not findings about a prediction: they read the PDF
 #   and never look at the model's output, so both are advisory   C8-02 C8-06
 #   rendered but not yet reviewed     C1-05 C3-05 C4-09 C8-03 C8-05
-#   specified but never implemented   C6-02 C6-04 C8-01..C8-06
+#   specified but never implemented   none.  C6-04 is the same check as C1-07
+#                                     and is deliberately not duplicated.
 #
 # The C8 family needs several pages of one document, so it is inert on a
 # workspace that samples pages: measured on three whole documents (92 pages,
@@ -183,6 +184,7 @@ checks:
   media_text_lines: 5
   media_graphic_frac: 0.15
   media_max_text_frac: 0.18
+  table_min_lines: 6
   discard_body_lines: 3
   discard_line_rate: 0.15
 
