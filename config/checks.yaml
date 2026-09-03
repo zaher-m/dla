@@ -142,8 +142,8 @@ policy:
 # the pipeline does -- an earlier version of that tool did not, and showed
 # findings the pipeline would never emit.
 #
-#   verified, real                    C1-01 C1-03 C1-04 C1-06
-#                                     C4-07 C4-08
+#   verified, real                    C1-03 C1-04 C4-07 C4-08
+#   rebuilt on reading lines          C1-01 C1-02 C1-03 C1-04 C1-05 C1-06
 #   verified, false positives fixed   C1-02 C1-07 C2-01 C4-02 C5-01 C5-03
 #                                     C6-01 C6-05 C6-06
 #   verified, demoted to advisory     C2-06 C3-01 C4-09 C6-03 C7-05
@@ -166,6 +166,45 @@ policy:
 # The C8 family needs several pages of one document, so it is inert on a
 # workspace that samples pages: measured on three whole documents (92 pages,
 # 4 systems) rather than on the random page sample.
+#
+# The coverage family was scored against the wrong unit until the reading-line
+# rebuild.  Two defects in the reference, not in any model:
+#
+#   PyMuPDF's line grouping is one box per glyph on much of this corpus.  44% of
+#   all body lines are taller than wide, which no horizontal text line is, and
+#   one page carries 58 "lines" holding 225 characters.  The median page's boxes
+#   are about twice as fine as its lines.  A finding then read "a block of 36
+#   consecutive text lines was missed" when what was missed was 36 glyphs of a
+#   vertical label in the margin.
+#
+#   Half of everything the family called lost content held no visible character
+#   at all: 51% of the orphan lines on the sample contained only spaces.  A model
+#   is right to emit no region for a space.
+#
+# Both are fixed at the right layer.  `validation/lines.py` rebuilds reading
+# lines for the checks to score against; the PSR keeps `text_lines` exactly as
+# the file states them and gains `blank_line_idx`, which is purely additive --
+# every pre-existing field rebuilds byte-identical.
+#
+# Effect on the random sample, per check, before -> after:
+#
+#   C1-01  0.7% -> 0.0%    (grouped behind C1-04; fires on 81% under total loss)
+#   C1-02  0.2% -> 0.2%
+#   C1-03 17.0% -> 2.1%    the largest single driver of escalation
+#   C1-04 10.1% -> 3.1%
+#   C1-05  0.9% -> 0.9%
+#   C1-06  9.9% -> 0.0%    was entirely fragmentation
+#
+#   block rate, best system   36.7% -> 15.8%
+#   escalation, best system   34.2% -> 15.8%, inside the 12-20% budget
+#
+# None of that came from loosening a threshold.  The counts were in fact
+# tightened, because they had been fitted in boxes and are now read in lines.
+# The family was then checked for the opposite failure -- going quiet -- by
+# deleting regions at random and confirming it still fires:
+#
+#   regions deleted    0%   10%   25%   50%   75%   100%
+#   pages blocked      8%   11%   30%   54%   75%    85%
 #
 # The order invariants were run against the PSR reference layout as a control:
 # regions taken straight from the PDF's geometry, where an invariant violation
@@ -203,12 +242,20 @@ checks:
   # inside ruled tables can have two body lines, and missing both read as 100%
   # lost.  Guarding on the size of the body set instead suppressed the real
   # findings, since dense table pages have few body lines by construction.
-  coverage_min_lost: 8
+  #
+  # Every count below is in RECONSTRUCTED READING LINES, not in the reference's
+  # boxes.  The two differ by about a factor of two on the median page of this
+  # corpus (validation/lines.py), so these were halved when coverage moved onto
+  # lines; a count fitted in one unit and read in the other is how a check goes
+  # quiet without anyone noticing.
+  coverage_min_lost: 4
   orphan_line_rate: 0.12
   orphan_area_rate: 0.12
-  orphan_cluster: 6
+  orphan_cluster: 3
   orphan_in_column_rate: 0.12
-  orphan_column_min_lines: 20
+  orphan_column_min_lines: 10
+  # C1-05: a page with at least this many reading lines and no text region at all
+  min_text_lines: 10
   footnote_band: 0.12
   footnote_lines: 4
   graphic_miss_area: 0.02

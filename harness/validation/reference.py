@@ -155,7 +155,7 @@ def page_reference(page, px_width, px_height):
         return SC(R(b))
 
     raw = page.get_text("rawdict")
-    lines, spans = [], []
+    lines, spans, blank = [], [], []
     for blk in raw["blocks"]:
         if blk["type"] != 0:
             continue
@@ -163,6 +163,15 @@ def page_reference(page, px_width, px_height):
             lb = ln["bbox"]
             if lb[2] - lb[0] > 1 and lb[3] - lb[1] > 1:
                 lines.append(S(lb))
+                # A line holding only spaces still has a bounding box, and on
+                # this corpus half of everything a coverage check called "lost
+                # content" was one of these: a model is right to emit no region
+                # for a space.  Recorded rather than dropped, because the PSR is
+                # a reading of the file and `text_lines` must stay exactly what
+                # the file says; consumers that score coverage skip these.
+                if not any(not c["c"].isspace()
+                           for sp in ln["spans"] for c in sp["chars"]):
+                    blank.append(len(lines) - 1)
             for sp in ln["spans"]:
                 spans.append({"bbox": S(sp["bbox"]), "size": sp["size"],
                               "font": sp["font"]})
@@ -246,6 +255,8 @@ def page_reference(page, px_width, px_height):
     return {
         "width": px_width, "height": px_height,
         "text_lines": lines, "text_blocks": blocks,
+        # Indices into `text_lines` whose characters are all whitespace.
+        "blank_line_idx": blank,
         "body_text_lines": body_text, "graphic_text_lines": graphic_text,
         "table_text_lines": table_text,
         "image_rects": images, "graphic_areas": graphics,

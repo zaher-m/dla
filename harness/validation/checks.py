@@ -27,6 +27,7 @@ import yaml
 from validation import assemble as assemblemod
 from validation import compare as comparemod
 from validation import document as docmod
+from validation import lines as linesmod
 from validation import psr_layout as psrlayout
 from validation import tables as tablemod
 from validation.buckets import bucket as to_bucket, TEXT, TABLE, MEDIA, DISCARD
@@ -46,13 +47,14 @@ def check(cid, severity, family, needs=()):
 
 
 DEFAULTS = {
+    "min_text_lines": 10,
     "orphan_line_rate": 0.12,
     "orphan_area_rate": 0.12,
-    "orphan_cluster": 6,
-    "coverage_min_lost": 8,
+    "orphan_cluster": 3,
+    "coverage_min_lost": 4,
     "margin_band": 0.08,
     "orphan_in_column_rate": 0.12,
-    "orphan_column_min_lines": 20,
+    "orphan_column_min_lines": 10,
     "footnote_lines": 4,
     "graphic_miss_count": 2,
     "overlap_regions": 4,
@@ -238,10 +240,10 @@ def c1_01(x):
     dense table page has few body lines by construction -- the misses that
     matter are large in absolute terms as well as in proportion.
     """
-    lost = len(x["orphan_content"])
+    lost = len(x["read_orphans"])
     if lost < x["t"]["coverage_min_lost"]:
         return
-    r = lost / max(len(x["body_lines"]), 1)
+    r = lost / max(len(x["read_lines"]), 1)
     if r > x["t"]["orphan_line_rate"]:
         return [_f("C1-01", BLOCK,
                    f"content lost: {r:.1%} of body text lines sit in no region",
@@ -250,8 +252,14 @@ def c1_01(x):
 
 @check("C1-02", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_02(x):
-    """Glyph ink area no region covers -- catches one big miss C1-01 dilutes."""
-    if len(x["orphan_content"]) < x["t"]["coverage_min_lost"]:
+    """Glyph ink area no region covers -- catches one big miss C1-01 dilutes.
+
+    Deliberately measured on the reference's own boxes rather than on
+    reconstructed lines: glyph area does not change when a line is fragmented,
+    which is what makes this the check that still means something on a page
+    whose line count does not.
+    """
+    if len(x["read_orphans"]) < x["t"]["coverage_min_lost"]:
         return
     tot = sum(_area(L) for L in x["body_lines"])
     lost = sum(_area(x["body_lines"][i]) for i in x["orphan_content"])
@@ -265,10 +273,10 @@ def c1_02(x):
 @check("C1-03", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_03(x):
     """Vertically contiguous run of orphans -- a missed block, not stray glyphs."""
-    if not x["orphan_content"]:
+    if not x["read_orphans"]:
         return
-    lines = x["body_lines"]
-    orph = sorted(x["orphan_content"], key=lambda i: lines[i][1])
+    lines = x["read_lines"]
+    orph = sorted(x["read_orphans"], key=lambda i: lines[i][1])
     lh = x["line_h"]
     run, best, cur = 1, 1, [orph[0]]
     bestset = list(cur)
@@ -296,11 +304,11 @@ def c1_04(x):
     uncovered lines is a defect on a 40-line page and noise on a 300-line one,
     and the count form fired on a quarter of a random sample.
     """
-    inband = [i for i, L in enumerate(x["body_lines"])
+    inband = [i for i, L in enumerate(x["read_lines"])
               if _band_of(L, x["bands"], x["W"]) is not None]
     if len(inband) < x["t"]["orphan_column_min_lines"]:
         return
-    orph = set(x["orphan_content"])
+    orph = set(x["read_orphans"])
     n = sum(1 for i in inband if i in orph)
     r = n / len(inband)
     if r > x["t"]["orphan_in_column_rate"]:
@@ -312,17 +320,17 @@ def c1_04(x):
 @check("C1-05", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_05(x):
     """No text region at all on a page that plainly has text."""
-    if len(x["body_lines"]) > 20 and not any(
+    if len(x["read_lines"]) >= x["t"]["min_text_lines"] and not any(
             b == TEXT for b in x["region_bucket"]):
         return [_f("C1-05", BLOCK,
-                   f"no text region on a page carrying {len(x['body_lines'])} text lines")]
+                   f"no text region on a page carrying {len(x['read_lines'])} text lines")]
 
 
 @check("C1-06", MAJOR, "C1", needs=("psr", "body_lines"))
 def c1_06(x):
     """Uncovered lines in the footnote band at the foot of the page."""
     cut = x["H"] * (1 - x["t"]["footnote_band"])
-    n = sum(1 for i in x["orphan_body"] if x["body_lines"][i][1] >= cut)
+    n = sum(1 for i in x["read_orphans_all"] if x["read_lines"][i][1] >= cut)
     if n >= x["t"]["footnote_lines"]:
         return [_f("C1-06", MAJOR,
                    f"{n} uncovered text lines in the bottom "
@@ -1070,6 +1078,46 @@ def context(regions, psr, stream, route, t=None, doc=None):
         "orphan_content": _outside_margins(body, orphan_body, H, t["margin_band"]),
         "doc": doc,
     }
+    # Coverage is scored against reconstructed reading lines, not against the
+    # reference's boxes.  On this corpus a "line" from PyMuPDF is often a single
+    # glyph -- the median page's boxes are nearly twice as fine as its lines, and
+    # a vertical marginal label arrives as one box per character.  Counting those
+    # reads a lost label as a lost section.  See validation/lines.py.
+    # Whitespace-only lines are not content and a model is right to miss them.
+    # They were 51% of everything the coverage family called lost.  The PSR
+    # records which they are (`blank_line_idx`, into `text_lines`); matched here
+    # by rounded coordinate, the same way body lines are, because the two lists
+    # hold separate objects after a JSON round trip.
+    blank_boxes = {tuple(round(v, 2) for v in all_lines[i])
+                   for i in (psr.get("blank_line_idx") or [])
+                   if i < len(all_lines)}
+    body_ink = [k for k, L in enumerate(body)
+                if tuple(round(v, 2) for v in L) not in blank_boxes]
+    ink = set(body_ink)
+    ctx["blank_body_lines"] = len(body) - len(ink)
+
+    read_lines, read_owner = linesmod.reading_lines(body)
+
+    def _orphan_lines(lost_boxes):
+        lost_boxes = set(lost_boxes)
+        covered = {k for i, k in enumerate(read_owner)
+                   if k is not None and i not in lost_boxes}
+        # A reading line built only from blank boxes is not lost content.
+        has_ink = {k for i, k in enumerate(read_owner)
+                   if k is not None and i in ink}
+        return [k for k in range(len(read_lines))
+                if k not in covered and k in has_ink]
+
+    ctx["read_lines"] = read_lines
+    # Two views, because the margin filter is not the same question twice.
+    # `read_orphans` drops the top and bottom bands, where running furniture
+    # lives and where a model is right to emit nothing.  `read_orphans_all`
+    # keeps them, because C1-06 exists to look inside the bottom band -- scoring
+    # it on the filtered set guarantees it never fires, which is exactly what
+    # happened when it shared one view with the rest of the family.
+    ctx["read_orphans"] = _orphan_lines(ctx["orphan_content"])
+    ctx["read_orphans_all"] = _orphan_lines(ctx["orphan_body"])
+    ctx["fragmentation"] = round(len(body) / max(len(read_lines), 1), 3) if body else 1.0
     ctx["facts"] = docmod.page_facts(regions, psr, ctx["bands"], t["margin_band"])
     # The order the PDF itself implies, for C4-07.  Built here rather than in
     # the check so the cost is paid once per page even if more order checks
