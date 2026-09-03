@@ -103,6 +103,13 @@ compare:
 #   specified but never implemented   none.  C6-04 is the same check as C1-07
 #                                     and is deliberately not duplicated.
 #
+# Known upstream defect, unfixed on purpose: `core.reference` collects a table
+# with shaded cell fills as a graphic area, moving its text out of the body
+# lines that `core.metrics` scores recall against -- 6-8% of glyph lines, on
+# 9-34% of pages.  Neither text density nor vector shape separates a shaded
+# table from a chart (see validation/tables.py), so the fix needs annotated
+# examples rather than another threshold.  Validation compensates locally.
+#
 # The C8 family needs several pages of one document, so it is inert on a
 # workspace that samples pages: measured on three whole documents (92 pages,
 # 4 systems) rather than on the random page sample.

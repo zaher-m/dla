@@ -47,6 +47,32 @@ surviving findings turned out to be framed paragraphs and whole-page borders.
 A caution for whoever tunes this next.  The band is fitted on 21 hand-checked
 boxes, which is enough to reject the failure modes actually seen and not enough
 to call it validated.  It is the first thing to re-fit against annotated pages.
+And it is calibrated on *grid candidates* -- a ruled area plus its padding.  It
+does not transfer to a model's own region box, which is drawn tight around the
+content: carried across, it rejected five unmistakable financial tables.
+
+A related defect is still open upstream, in `core.reference`.  A table drawn
+with coloured header rows and banded cell fills is a cluster of filled vector
+drawings, so it is collected as a `graphic_area` and all of its cell text is
+reattributed to `graphic_text_lines` -- out of `body_text_lines`, which is what
+`core.metrics` scores text recall against.  Measured across three workspaces the
+effect reaches 6-8% of all glyph lines, on 9-34% of pages.
+
+Two signals were measured against visually confirmed examples and neither
+separates a shaded table from a chart:
+
+  text density   shaded tables cover 20-31% of the box with glyphs; benchmark
+                 charts cover a median of 28%.  The distributions coincide.  A
+                 0.16 threshold fitted on one corpus deleted genuine charts from
+                 eight pages of the other.
+  vector shape   both are drawn from rectangles and straight lines with one to
+                 four fill colours.  The best combined rule caught six of seven
+                 tables and wrongly caught eleven of thirty-four charts.
+
+The distinction is semantic rather than geometric, so the fix needs labelled
+examples and not another threshold.  Until then the PSR is left alone -- it is
+shared with the benchmark metrics -- and validation compensates locally in
+`checks.figure_areas`.
 """
 POS_TOL = 6.0        # px: strokes closer than this are one rule drawn twice
 ROW_OVERLAP = 0.5
