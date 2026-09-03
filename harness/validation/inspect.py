@@ -8,7 +8,8 @@ tables -- turned out to be 97% false positives: charts, running headers, framed
 paragraphs and empty boxes.  Rendering is what caught that.
 
     python -m validation.inspect --workspace data/sample120 \
-        --system docling.heron --check C2-01 --out /tmp/c2-01.png
+        --corpus data/corpus_flat --system docling.heron --check C2-01 \
+        --out /tmp/c2-01.png
 
 Red is the region the finding names, green is every other region the system
 predicted, blue is the PSR structure the check compared against.
@@ -18,26 +19,34 @@ import argparse, json, os, random, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PIL import Image, ImageDraw  # noqa: E402
 
-from validation import assemble, checks  # noqa: E402
+from validation import assemble, checks, evaluate  # noqa: E402
 
 CELL = 560
 RED, GREEN, BLUE = (220, 0, 0), (0, 150, 0), (30, 90, 220)
 
 
-def collect(ws, system, check_id, direction_of=None):
+def collect(ws, corpus, system, check_id):
+    """Findings for one system, with pages routed exactly as the pipeline does.
+
+    The route is derived, never supplied.  An earlier version passed a fixed
+    `psr_trust: full` and so rendered findings from pages the pipeline excludes
+    -- including ones whose text is drawn as vector outlines, where the
+    reference holds three lines and every check produces nonsense.  Verifying a
+    check against findings it would never emit is worse than not verifying it.
+    """
     ref = json.load(open(os.path.join(ws, "inventory",
                                       "pdf_structural_reference.json")))
+    routes = evaluate.routes_for(ws, corpus)
     norm = os.path.join(ws, "normalized_outputs", system)
     hits = []
     for pid, psr in ref.items():
         f = os.path.join(norm, pid + ".json")
-        if not os.path.exists(f):
+        r = routes.get(pid)
+        if not os.path.exists(f) or r is None or r["psr_trust"] == "unusable":
             continue
         regions = json.load(open(f))["regions"]
-        d = (direction_of or {}).get(pid, "rtl")
-        stream = assemble.assemble(regions, psr, direction=d)
-        res = checks.run(regions, psr, stream,
-                         {"psr_trust": "full", "page_kind": "born_digital"})
+        stream = assemble.assemble(regions, psr, direction=r["direction"])
+        res = checks.run(regions, psr, stream, r)
         for fd in res["findings"]:
             if fd["id"] == check_id:
                 hits.append((pid, psr, regions, fd))
@@ -75,6 +84,7 @@ def sheet(ws, hits, out, cols=3, rows=2, seed=0, psr_key=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--workspace", required=True)
+    ap.add_argument("--corpus", required=True)
     ap.add_argument("--system", required=True)
     ap.add_argument("--check", required=True)
     ap.add_argument("--out", required=True)
@@ -82,7 +92,7 @@ def main():
                     help="PSR keys to draw in blue, e.g. gutters column_bands")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
-    hits = collect(a.workspace, a.system, a.check)
+    hits = collect(a.workspace, a.corpus, a.system, a.check)
     n, tot = sheet(a.workspace, hits, a.out, seed=a.seed, psr_key=a.psr)
     print(f"{a.check}: {tot} findings, rendered {n} -> {a.out}")
 

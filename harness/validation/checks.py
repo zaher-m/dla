@@ -71,6 +71,7 @@ DEFAULTS = {
     "page_dominating": 0.85,
     "coverage_floor": 0.40,
     "excess_band_transitions": 2,
+    "order_inversions": 2,
     "aspect_ratio": 60.0,
 }
 
@@ -109,6 +110,64 @@ def _band_of(box, bands, W, full=0.62):
     hits = [i for i, b in enumerate(bands)
             if min(box[2], b[1]) - max(box[0], b[0]) > (box[2] - box[0]) * 0.5]
     return hits[0] if len(hits) == 1 else None
+
+
+def figure_areas(psr, max_text_frac=0.18):
+    """Graphic areas that are really figures.
+
+    `graphic_areas` clusters filled vector drawings, and a financial table drawn
+    with coloured header rows and banded cell fills is a cluster of filled
+    drawings.  Whole tables therefore arrive here as figures, and a check asking
+    "where is the figure region for this graphic" then charges a detector for
+    not boxing a table as an image.
+
+    Text density separates them, measured on visually confirmed examples: a
+    chart covers 3-8% of its own area with glyphs, a table 21-33%.  The same
+    correction belongs in the PSR itself, where it would also repair body-line
+    attribution, but a threshold fitted here deleted genuine charts from the
+    benchmark pages, so it stays local until it can be validated properly.
+    """
+    out = []
+    for g in (psr.get("graphic_areas") or []):
+        ga = max(_area(g), 1e-6)
+        ta = sum(_area(L) for L in psr["text_lines"] if _cover(L, g) >= 0.6)
+        if ta / ga <= max_text_frac:
+            out.append(g)
+    return out
+
+
+def page_columns(psr, tol=0.5):
+    """Column bands that separate independent flows of running text.
+
+    `column_bands` comes from the horizontal ink profile, which on a financial
+    page resolves a table's numeric columns into separate bands.  Every check
+    built on those bands then misreads the page: reading a table row by row
+    registers as 57-88 switches between "columns", and a region spanning a row
+    looks like a merge across two of them.
+
+    Adjacent bands are merged back together when the text on either side of the
+    boundary belongs to shared rows -- the same test that separates a column
+    gutter from a gap between table columns.  Two columns of an article leave
+    the boundary intact because their lines sit at unrelated heights.
+    """
+    bands = psr.get("column_bands") or []
+    if len(bands) < 2:
+        return list(bands)
+    body = psr.get("body_text_lines") or []
+    out = [list(bands[0])]
+    for b in bands[1:]:
+        left = [L for L in body if L[2] <= out[-1][1] + 2 and L[0] >= out[-1][0] - 2]
+        right = [L for L in body if L[0] >= b[0] - 2 and L[2] <= b[1] + 2]
+        paired = 0
+        for a in left:
+            h = max(a[3] - a[1], 1e-6)
+            if any(min(a[3], c[3]) - max(a[1], c[1]) > h * 0.5 for c in right):
+                paired += 1
+        if left and right and paired / len(left) > tol:
+            out[-1][1] = b[1]          # same rows on both sides: one table
+        else:
+            out.append(list(b))
+    return out
 
 
 def column_gutters(psr, tol=0.5):
@@ -289,7 +348,11 @@ def c2_01(x):
                    value=round(rate, 4))]
 
 
-@check("C2-06", MAJOR, "C2", needs=("psr",))
+# Demoted from MAJOR.  Rendering the findings showed most are empty form cells
+# and decorative banners whose text is baked into an image -- both genuinely
+# hold no extractable text, and neither is a layout error.  It stays as a weak
+# feature because a region with no text is still worth knowing about.
+@check("C2-06", ADV, "C2", needs=("psr",))
 def c2_06(x):
     """A text region holding no glyphs at all.
 
@@ -309,7 +372,7 @@ def c2_06(x):
         if not holds and not sits:
             empty.append(i)
     if empty:
-        return [_f("C2-06", MAJOR,
+        return [_f("C2-06", ADV,
                    f"{len(empty)} text region(s) contain no text",
                    regions=empty, value=len(empty))]
 
@@ -417,20 +480,27 @@ def c4_03(x):
 @check("C4-02", BLOCK, "C4", needs=("psr", "bands", "stream"))
 def c4_02(x):
     """Within one column, blocks are not read top to bottom."""
-    bad = 0
     per = defaultdict(list)
     for blk in x["stream"]["blocks"]:
         b = _band_of(blk["bbox"], x["bands"], x["W"])
-        if b is not None:
-            per[b].append((blk["rank"], blk["bbox"][1]))
+        if b is not None and blk["lines"]:
+            per[b].append((blk["rank"], blk["bbox"][1], blk["region"]))
+    bad, regions = 0, []
+    # A block is out of order when the stream reaches it after a block that
+    # starts materially lower on the page.  The tolerance is a whole block, not
+    # a line: side-by-side blocks in one column differ by a few pixels of top
+    # edge and are not a reading-order error.
+    tol = max(x["line_h"] * 3, 40.0)
     for b, items in per.items():
         items.sort()
-        ys = [y for _, y in items]
-        bad += sum(1 for a, c in zip(ys, ys[1:]) if c < a - x["line_h"])
-    if bad:
+        for (r1, y1, g1), (r2, y2, g2) in zip(items, items[1:]):
+            if y2 < y1 - tol:
+                bad += 1
+                regions.append(g2)
+    if bad >= x["t"]["order_inversions"]:
         return [_f("C4-02", BLOCK,
                    f"{bad} block(s) are read out of top-to-bottom order within "
-                   f"their own column", value=bad)]
+                   f"their own column", regions=regions, value=bad)]
 
 
 # ------------------------------------------------------- C5  duplication ----
@@ -658,12 +728,14 @@ def context(regions, psr, stream, route, t=None):
         "regions": regions, "psr": psr, "stream": stream, "route": route, "t": t,
         "W": W, "H": H, "all_lines": all_lines, "body_lines": body,
         "line_h": float(np.median(heights)),
-        "bands": psr.get("column_bands") or [],
+        "bands": page_columns(psr),
+        "raw_bands": psr.get("column_bands") or [],
         "gutters": psr.get("gutters") or [],
         "page_gutters": column_gutters(psr),
         "grids": psr.get("grid_candidates") or [],
         "table_grids": [q["bbox"] for q in tablemod.qualified(psr)],
-        "graphics": psr.get("graphic_areas") or [],
+        "graphics": figure_areas(psr),
+        "raw_graphics": psr.get("graphic_areas") or [],
         "region_bucket": [to_bucket(r.get("class")) for r in regions],
         "region_lines": [region_lines.get(i, []) for i in range(len(regions))],
         "orphan_body": orphan_body,
