@@ -22,6 +22,9 @@ c0:
   # C0-07 one "line" per glyph: broken font subsetting
   frag_max_chars_per_span: 1
   frag_min_spans: 200
+  # C0-10 text converted to vector outlines: dense vector ink, almost no glyphs
+  outline_vector_ink: 0.20
+  outline_max_glyph: 0.05
   # C0-08 text direction.  Decided per DOCUMENT, not per page: a statistical
   # table page inside an Arabic report is 8% Arabic characters and still reads
   # right to left.  Fitted on 895 pages / 28 documents -- the corpus separates

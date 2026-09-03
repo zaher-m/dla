@@ -157,6 +157,12 @@ def page_signals(doc, pno):
         return any(b[0] <= cx <= b[2] and b[1] <= cy <= b[3] for b in big_images)
 
     drawings = page.get_drawings()
+    # Vector ink, so that a page whose text was converted to outlines can be
+    # told apart from a page that simply has few words on it.
+    draw_rects = [[d["rect"].x0, d["rect"].y0, d["rect"].x1, d["rect"].y1]
+                  for d in drawings
+                  if d["rect"].width > 1 and d["rect"].height > 1
+                  and d["rect"].width < W * 0.98 and d["rect"].height < H * 0.98]
 
     sizes = [s["size"] for s in spans if s.get("size")]
     heights = [b[3] - b[1] for b in lines]
@@ -189,6 +195,7 @@ def page_signals(doc, pno):
         "n_big_images": len(big_images),
         "n_drawings": len(drawings),
         "glyph_area_frac": round(_area_frac(lines, W, H), 4),
+        "vector_area_frac": round(_area_frac(draw_rects, W, H), 4),
         "image_area_frac": round(_area_frac(images, W, H), 4),
         "big_image_area_frac": round(_area_frac(big_images, W, H), 4),
         "lines_in_big_image_frac": round(

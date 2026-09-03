@@ -27,6 +27,8 @@ DEFAULTS = {
     "undecodable_frac": 0.20,
     "frag_max_chars_per_span": 1,
     "frag_min_spans": 200,
+    "outline_vector_ink": 0.20,
+    "outline_max_glyph": 0.05,
     "rtl_frac": 0.20,
     "doc_rtl_aggregate": 0.05,
     "doc_rtl_max_page": 0.50,
@@ -117,6 +119,19 @@ def route(sig, t=None, ctx=None):
         fire("C0-04", f"{sig['lines_in_big_image_frac']:.0%} of lines sit inside a "
                       f"full-page image: this text is another model's OCR output")
 
+    # Text converted to curves.  There is no missing text layer and no image, so
+    # every other C0 test passes it as born-digital, and the reference then
+    # describes a page of 3 lines while the render is dense with words.  Four
+    # such pages in a 120-page sample carried 96 characters each -- a header and
+    # a footer -- against 229-654 vector drawings.
+    outlined = (sig.get("vector_area_frac", 0.0) > t["outline_vector_ink"]
+                and sig["glyph_area_frac"] < t["outline_max_glyph"])
+    if outlined:
+        fire("C0-10", f"the page's text is drawn as vector outlines: "
+                      f"{sig['n_drawings']} drawings cover "
+                      f"{sig['vector_area_frac']:.0%} of the page against "
+                      f"{sig['glyph_area_frac']:.0%} of glyphs")
+
     if sig["rotation"] % 90 != 0:
         fire("C0-05", f"page rotation {sig['rotation']} is not a right angle")
 
@@ -147,12 +162,12 @@ def route(sig, t=None, ctx=None):
 
     if no_text:
         kind = "scanned"
-    elif sparse or ocr_layer:
+    elif sparse or ocr_layer or outlined:
         kind = "hybrid"
     else:
         kind = "born_digital"
 
-    if kind == "scanned" or hidden > 0.90:
+    if kind == "scanned" or hidden > 0.90 or outlined:
         trust = "unusable"
     elif kind == "hybrid" or frag or bad > t["undecodable_frac"] \
             or sig["lines_outside_crop_frac"] > t["clipped_frac"]:
