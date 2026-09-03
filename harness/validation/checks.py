@@ -78,6 +78,11 @@ DEFAULTS = {
     "excess_band_transitions": 2,
     "order_inversions": 2,
     "order_tau": 0.90,
+    "contiguity_min_lines": 6,
+    "contiguity_slack": 0.25,
+    "backward_jumps": 3,
+    "rtl_row_min_pairs": 3,
+    "rtl_row_wrong": 0.5,
     "aspect_ratio": 60.0,
 }
 
@@ -523,6 +528,102 @@ def c4_02(x):
 
 
 # ------------------------------------------------------- C5  duplication ----
+# ---- order invariants -------------------------------------------------------
+#
+# A bounding-box algorithm can always produce *an* order; nothing about it can
+# say the order is right, which is why comparing one derivation against another
+# measures only their difference in granularity.  But an order is not only right
+# or wrong relative to a reference -- it can be *invalid on its own terms*, and
+# those constraints need no reference and no model-supplied order.  These three
+# hold whoever produced the sequence, so unlike C4-07 they cover the systems
+# that emit no order at all, which on this corpus is most of them.
+
+
+@check("C4-08", BLOCK, "C4", needs=("psr", "stream"))
+def c4_08(x):
+    """A table or figure is read interleaved with the text around it.
+
+    The lines inside one structural unit have to come out together.  When a
+    table's rows arrive split around a paragraph, the extracted text is fluent
+    and the table is destroyed -- the failure mode that survives every metric
+    based on coverage or on boxes.
+    """
+    pos = {ln: k for k, ln in enumerate(x["stream"]["sequence"])}
+    units = [q["bbox"] for q in tablemod.qualified(x["psr"])] + x["graphics"]
+    bad = []
+    for u in units:
+        inside = [pos[i] for i, L in enumerate(x["all_lines"])
+                  if i in pos and _cover(L, u) >= 0.6]
+        if len(inside) < x["t"]["contiguity_min_lines"]:
+            continue
+        span = max(inside) - min(inside) + 1
+        intruders = span - len(inside)
+        if intruders > len(inside) * x["t"]["contiguity_slack"]:
+            bad.append((len(inside), intruders))
+    if bad:
+        n, intr = max(bad, key=lambda b: b[1])
+        return [_f("C4-08", BLOCK,
+                   f"a table or figure of {n} lines is read with {intr} lines "
+                   f"of other content spliced into it", value=intr)]
+
+
+@check("C4-09", MAJOR, "C4", needs=("psr", "stream"))
+def c4_09(x):
+    """The stream jumps back up the page without changing column.
+
+    Only counted where the two blocks sit in the same column band, or the page
+    has none: moving from the foot of one column to the head of the next is a
+    jump backwards and is correct.
+    """
+    blocks = [b for b in sorted(x["stream"]["blocks"], key=lambda b: b["rank"])
+              if b["lines"]]
+    tol = max(x["line_h"] * 3, 40.0)
+    bad = []
+    for a, b in zip(blocks, blocks[1:]):
+        if b["bbox"][1] >= a["bbox"][3] - tol:
+            continue
+        ba = _band_of(a["bbox"], x["bands"], x["W"])
+        bb = _band_of(b["bbox"], x["bands"], x["W"])
+        if x["bands"] and ba is not None and bb is not None and ba != bb:
+            continue
+        bad.append(b["region"])
+    if len(bad) >= x["t"]["backward_jumps"]:
+        return [_f("C4-09", MAJOR,
+                   f"the reading order jumps back up the page {len(bad)} times "
+                   f"without moving to another column",
+                   regions=bad, value=len(bad))]
+
+
+@check("C4-10", BLOCK, "C4", needs=("psr", "stream"))
+def c4_10(x):
+    """On a right-to-left page, blocks sharing a row are read left to right.
+
+    The single most damaging order error available on this corpus, and invisible
+    to every other check: the text is complete, the boxes are right, and the
+    columns of a row come out reversed.
+    """
+    if x["route"].get("direction") != "rtl":
+        return
+    blocks = [b for b in sorted(x["stream"]["blocks"], key=lambda b: b["rank"])
+              if b["lines"]]
+    wrong = tot = 0
+    seen = []
+    for a, b in zip(blocks, blocks[1:]):
+        h = min(a["bbox"][3] - a["bbox"][1], b["bbox"][3] - b["bbox"][1])
+        ov = min(a["bbox"][3], b["bbox"][3]) - max(a["bbox"][1], b["bbox"][1])
+        if h <= 0 or ov < h * 0.5:
+            continue                      # not the same row
+        tot += 1
+        if b["bbox"][0] > a["bbox"][0]:   # moved rightwards on an RTL page
+            wrong += 1
+            seen.append(b["region"])
+    if tot >= x["t"]["rtl_row_min_pairs"] and wrong / tot > x["t"]["rtl_row_wrong"]:
+        return [_f("C4-10", BLOCK,
+                   f"{wrong} of {tot} side-by-side blocks are read left to "
+                   f"right on a right-to-left page",
+                   regions=seen, value=round(wrong / tot, 3))]
+
+
 @check("C4-07", MAJOR, "C4", needs=("psr", "reference_stream"))
 def c4_07(x):
     """The reading order disagrees with the order the page itself implies.

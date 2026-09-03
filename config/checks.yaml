@@ -58,7 +58,14 @@ compare:
   order_inversions: 2
   # C4-07 compares against the order the PDF's own geometry implies.  It is the
   # only order check that survives on a single-column page.
-  order_tau: 0.90      # column changes beyond what the page structure allows
+  order_tau: 0.90
+  # order invariants: valid on their own terms, no reference and no
+  # model-supplied order needed, so they cover the systems that emit none
+  contiguity_min_lines: 6
+  contiguity_slack: 0.25
+  backward_jumps: 3
+  rtl_row_min_pairs: 3
+  rtl_row_wrong: 0.5      # column changes beyond what the page structure allows
 
 # --- C1-C8: the deterministic checks -------------------------------------
 #
@@ -75,12 +82,13 @@ compare:
 # the pipeline does -- an earlier version of that tool did not, and showed
 # findings the pipeline would never emit.
 #
-#   verified, real                    C1-01 C1-03 C1-04 C1-06 C4-07
+#   verified, real                    C1-01 C1-03 C1-04 C1-06
+#                                     C4-07 C4-08 C4-10
 #   verified, false positives fixed   C1-02 C1-07 C2-01 C4-02 C5-01 C5-03
 #                                     C6-01 C6-05 C6-06
 #   verified, demoted to advisory     C2-06 C3-01 C6-03 C7-05
 #   fires zero times after fixing the column bands   C3-02 C4-03 C7-01 C7-04
-#   rendered but not yet reviewed     C1-05 C3-05
+#   rendered but not yet reviewed     C1-05 C3-05 C4-09
 #   specified but never implemented   C6-02 C6-04 C8-01..C8-06
 #
 # Reading order is only checkable where the model supplies one.  Of the four
@@ -131,6 +139,13 @@ checks:
   # C4-07 compares against the order the PDF's own geometry implies.  It is the
   # only order check that survives on a single-column page.
   order_tau: 0.90
+  # order invariants: valid on their own terms, no reference and no
+  # model-supplied order needed, so they cover the systems that emit none
+  contiguity_min_lines: 6
+  contiguity_slack: 0.25
+  backward_jumps: 3
+  rtl_row_min_pairs: 3
+  rtl_row_wrong: 0.5
 
   # C5 duplication
   overlap_frac: 0.50
