@@ -65,6 +65,14 @@ compare:
 #
 # As with the compare thresholds these bound the escalation rate, they do not
 # establish a false-accept rate.  That needs annotated pages.
+#
+# Verification status, from rendering findings and looking at them:
+#   verified true positive   C1-03
+#   verified false positive, fixed   C2-01 C2-06 C5-01 C5-03 C6-01 C6-05 C6-06
+#   verified false positive, demoted C3-01
+#   not yet rendered         C1-01 C1-02 C1-04 C1-05 C1-06 C1-07 C3-02 C3-05
+#                            C4-02 C4-03 C7-01 C7-03 C7-04 C7-05
+# Nothing in the last group should be trusted as a gate until it has been.
 checks:
   # C1 coverage.  Margin lines are excluded: content in the top/bottom 8% is
   # running furniture the pipeline discards anyway, and it was 22% of all
@@ -82,6 +90,10 @@ checks:
 
   # C2 boundaries
   line_cut_rate: 0.15
+  # a cut is horizontal: area coverage cannot separate a real split from
+  # diacritics overflowing a correct boundary
+  cut_min: 0.15
+  cut_max: 0.85
 
   # C3 columns
   gutter_cover: 0.6
@@ -93,7 +105,8 @@ checks:
 
   # C5 duplication
   overlap_frac: 0.50
-  overlap_regions: 6
+  overlap_regions: 4
+  overlap_region_rate: 0.30
   double_emit_rate: 0.02
 
   # C6 buckets.  C6-01 runs only against grids that qualify as tables under

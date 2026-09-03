@@ -50,10 +50,13 @@ DEFAULTS = {
     "orphan_column_min_lines": 20,
     "footnote_lines": 4,
     "graphic_miss_count": 2,
-    "overlap_regions": 6,
+    "overlap_regions": 4,
+    "overlap_region_rate": 0.30,
     "footnote_band": 0.12,
     "graphic_miss_area": 0.02,
     "line_cut_rate": 0.15,
+    "cut_min": 0.15,
+    "cut_max": 0.85,
     "gutter_cover": 0.6,
     "band_span": 0.2,
     "band_imbalance": 0.85,
@@ -106,6 +109,39 @@ def _band_of(box, bands, W, full=0.62):
     hits = [i for i, b in enumerate(bands)
             if min(box[2], b[1]) - max(box[0], b[0]) > (box[2] - box[0]) * 0.5]
     return hits[0] if len(hits) == 1 else None
+
+
+def column_gutters(psr, tol=0.5):
+    """Whitespace corridors that really do separate two columns of running text.
+
+    `find_gutters` reports vertical whitespace in the body text, and on a
+    financial page the widest such corridors are the gaps between a table's own
+    numeric columns.  Filtering by ruled-table membership is not enough: unruled
+    tables are common here and produce no grid candidate at all, so rendering
+    the findings still showed every one of them was a detector correctly boxing
+    a table.
+
+    What separates the two is whether the sides flow independently.  Across a
+    real column gutter the left and right text are separate flows and their
+    lines sit at unrelated heights; across a gap between table columns the
+    lines on both sides belong to the same row and share a y band.
+    """
+    out = []
+    for g in (psr.get("gutters") or []):
+        left = [L for L in (psr.get("body_text_lines") or [])
+                if L[2] <= g[0] + 2 and L[2] > g[0] - (g[2] - g[0]) * 6]
+        right = [L for L in (psr.get("body_text_lines") or [])
+                 if L[0] >= g[2] - 2 and L[0] < g[2] + (g[2] - g[0]) * 6]
+        if not left or not right:
+            continue
+        paired = 0
+        for a in left:
+            h = max(a[3] - a[1], 1e-6)
+            if any(min(a[3], b[3]) - max(a[1], b[1]) > h * 0.5 for b in right):
+                paired += 1
+        if paired / len(left) <= tol:
+            out.append(g)
+    return out
 
 
 def _f(cid, sev, msg, regions=(), value=None):
@@ -221,19 +257,36 @@ def c1_07(x):
 # ------------------------------------------------------- C2  boundaries -----
 @check("C2-01", MAJOR, "C2", needs=("psr", "body_lines"))
 def c2_01(x):
-    """Region boundaries cutting through glyph lines."""
+    """Region boundaries cutting through glyph lines.
+
+    Counts *lines that are cut*, not (line, region) pairs.  Summing pairs let a
+    line clipped by three regions count three times and produced "rates" above
+    190%.
+
+    A cut is measured horizontally.  Area coverage cannot tell a genuine split
+    from Arabic diacritics and ascenders poking a few pixels past an otherwise
+    perfect boundary -- `core.metrics` documents the same trap -- and on an
+    area test every line of a correctly boxed paragraph reads as cut.  A region
+    that ends partway along a line's width has really divided it.
+    """
     bad = defaultdict(int)
+    cut = 0
+    lo, hi = x["t"]["cut_min"], x["t"]["cut_max"]
     for L in x["body_lines"]:
-        for i, r in enumerate(x["regions"]):
-            c = _cover(L, r["bbox"])
-            if 0.12 < c < 0.88:
+        w = max(L[2] - L[0], 1e-6)
+        hit = [i for i, r in enumerate(x["regions"])
+               if lo < (max(0.0, min(L[2], r["bbox"][2]) - max(L[0], r["bbox"][0])) / w) < hi
+               and _cover(L, r["bbox"]) > 0.05]
+        if hit:
+            cut += 1
+            for i in hit:
                 bad[i] += 1
-    n = sum(bad.values())
-    rate = n / max(len(x["body_lines"]), 1)
+    rate = cut / max(len(x["body_lines"]), 1)
     if rate > x["t"]["line_cut_rate"]:
         return [_f("C2-01", MAJOR,
                    f"{rate:.0%} of text lines are cut by a region boundary",
-                   regions=list(bad), value=round(rate, 4))]
+                   regions=sorted(bad, key=lambda i: -bad[i])[:8],
+                   value=round(rate, 4))]
 
 
 @check("C2-06", MAJOR, "C2", needs=("psr",))
@@ -249,7 +302,11 @@ def c2_06(x):
     for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"])):
         if b != TEXT:
             continue
-        if not any(_cover(L, r["bbox"]) >= 0.5 for L in x["all_lines"]):
+        # Either the region holds a line, or it sits on glyphs: a box tighter
+        # than one line of text contains no line and is not therefore empty.
+        holds = any(_cover(L, r["bbox"]) >= 0.5 for L in x["all_lines"])
+        sits = any(_cover(r["bbox"], L) >= 0.5 for L in x["all_lines"])
+        if not holds and not sits:
             empty.append(i)
     if empty:
         return [_f("C2-06", MAJOR,
@@ -258,20 +315,36 @@ def c2_06(x):
 
 
 # ------------------------------------------------------- C3  columns --------
-@check("C3-01", BLOCK, "C3", needs=("psr", "gutters"))
+# Demoted from BLOCK.  Fifteen findings were rendered across three rounds of
+# fixes -- filtering gutters inside ruled tables, then inside qualified tables,
+# then by whether the two sides flow independently -- and not one was a real
+# column merge.  On this corpus the widest vertical whitespace is almost always
+# inside a table, ruled or not, and a detector boxing that table spans it
+# correctly.  C3-02, which works from the page-level ink profile rather than
+# local whitespace, covers the same failure without the false positives.  This
+# stays as a weak feature and must never gate a page.
+@check("C3-01", ADV, "C3", needs=("psr", "gutters"))
 def c3_01(x):
-    """A text region straddling a real whitespace corridor between columns."""
+    """A text region straddling a real whitespace corridor between columns.
+
+    Only corridors outside tables count.  `find_gutters` looks for vertical
+    whitespace in the body text, and on a financial page the widest such
+    corridors are the gaps between a table's own numeric columns -- rendering
+    the findings showed most of them were a detector correctly boxing a table
+    that happens to contain white space.  A region spanning a table's internal
+    gap has merged nothing.
+    """
     bad = []
     for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"])):
         if b != TEXT:
             continue
-        for g in x["gutters"]:
+        for g in x["page_gutters"]:
             w = g[2] - g[0]
             if w > 0 and (min(r["bbox"][2], g[2]) - max(r["bbox"][0], g[0])) \
                     > w * x["t"]["gutter_cover"]:
                 bad.append(i); break
     if bad:
-        return [_f("C3-01", BLOCK,
+        return [_f("C3-01", ADV,
                    f"{len(bad)} text region(s) span the whitespace corridor "
                    f"between two columns", regions=bad, value=len(bad))]
 
@@ -372,12 +445,23 @@ def c5_01(x):
                 continue
             a, b = x["regions"][i]["bbox"], x["regions"][j]["bbox"]
             small = min(_area(a), _area(b))
-            if small > 0 and _inter(a, b) / small > x["t"]["overlap_frac"]:
+            if not small:
+                continue
+            ov = _inter(a, b) / small
+            # Containment is hierarchy, not duplication: a heading box inside a
+            # block is how several systems express structure, and a consumer
+            # resolves it by nesting.  Only siblings that partly overlap are a
+            # defect.
+            if ov > 0.9:
+                continue
+            if ov > x["t"]["overlap_frac"]:
                 bad.add(i); bad.add(j)
-    if len(bad) >= x["t"]["overlap_regions"]:
+    rate = len(bad) / max(n, 1)
+    if rate > x["t"]["overlap_region_rate"] and len(bad) >= x["t"]["overlap_regions"]:
         return [_f("C5-01", MAJOR,
-                   f"{len(bad)} regions of the same kind overlap each other",
-                   regions=bad, value=len(bad))]
+                   f"{len(bad)} of {n} regions ({rate:.0%}) partly overlap "
+                   f"another region of the same kind",
+                   regions=bad, value=round(rate, 4))]
 
 
 @check("C5-03", MAJOR, "C5", needs=("psr",))
@@ -388,9 +472,19 @@ def c5_03(x):
     for li, L in enumerate(x["all_lines"]):
         owners = [i for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"]))
                   if b == TEXT and _cover(L, r["bbox"]) >= 0.5]
-        if len(owners) > 1:
+        if len(owners) < 2:
+            continue
+        # Nested regions are one record after the consumer resolves containment;
+        # a line is only emitted twice when two regions genuinely sit side by
+        # side over it.  Counting nesting put this at 90% of lines on some pages.
+        boxes = [x["regions"][i]["bbox"] for i in owners]
+        siblings = [(i, j) for a, i in enumerate(owners)
+                    for j in owners[a + 1:]
+                    if _cover(x["regions"][i]["bbox"], x["regions"][j]["bbox"]) < 0.9
+                    and _cover(x["regions"][j]["bbox"], x["regions"][i]["bbox"]) < 0.9]
+        if siblings:
             dup += 1
-            seen.update(owners)
+            seen.update(i for pair in siblings for i in pair)
     rate = dup / max(len(x["all_lines"]), 1)
     if rate > x["t"]["double_emit_rate"]:
         return [_f("C5-03", MAJOR,
@@ -437,10 +531,20 @@ def c6_03(x):
 
 @check("C6-05", BLOCK, "C6", needs=("psr", "bands"))
 def c6_05(x):
-    """Body content classified as running furniture and dropped."""
+    """Body content classified as running furniture and dropped.
+
+    Position is tested vertically as well as horizontally.  A column band spans
+    the full page height, so a running header sits inside one by construction
+    and every finding this check produced was a correctly identified header.
+    """
+    m = x["t"]["margin_band"]
+    top, bot = m * x["H"], (1 - m) * x["H"]
     bad = []
     for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"])):
         if b != DISCARD or len(x["region_lines"][i]) <= x["t"]["discard_body_lines"]:
+            continue
+        cy = (r["bbox"][1] + r["bbox"][3]) / 2
+        if not (top <= cy <= bot):
             continue
         if _band_of(r["bbox"], x["bands"], x["W"]) is not None:
             bad.append(i)
@@ -556,6 +660,7 @@ def context(regions, psr, stream, route, t=None):
         "line_h": float(np.median(heights)),
         "bands": psr.get("column_bands") or [],
         "gutters": psr.get("gutters") or [],
+        "page_gutters": column_gutters(psr),
         "grids": psr.get("grid_candidates") or [],
         "table_grids": [q["bbox"] for q in tablemod.qualified(psr)],
         "graphics": psr.get("graphic_areas") or [],
@@ -585,10 +690,10 @@ def available(x):
         have.add("bands")
     elif (x["psr"].get("n_columns_est") or 1) <= 1:
         na.add("bands")          # a genuinely single-column page
-    if x["gutters"]:
+    if x["page_gutters"]:
         have.add("gutters")
-    elif len(x["bands"]) <= 1:
-        na.add("gutters")        # nothing to run between
+    elif len(x["bands"]) <= 1 or x["gutters"]:
+        na.add("gutters")        # single column, or every corridor is inside a table
     if x["table_grids"]:
         have.add("grids")
     else:
