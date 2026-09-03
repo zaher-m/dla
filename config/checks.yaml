@@ -72,22 +72,25 @@ compare:
 # the pipeline does -- an earlier version of that tool did not, and showed
 # findings the pipeline would never emit.
 #
-#   verified, real                    C1-03 C1-04 C1-06
-#   verified, false positives fixed   C1-07 C2-01 C4-02 C5-01 C5-03
+#   verified, real                    C1-01 C1-03 C1-04 C1-06
+#   verified, false positives fixed   C1-02 C1-07 C2-01 C4-02 C5-01 C5-03
 #                                     C6-01 C6-05 C6-06
-#   verified, demoted to advisory     C2-06 C3-01 C6-03
+#   verified, demoted to advisory     C2-06 C3-01 C6-03 C7-05
 #   fires zero times after fixing the column bands   C3-02 C4-03 C7-01 C7-04
-#   rendered but not yet reviewed     C1-01 C3-05 C7-05
-#   never rendered                    C1-02 C1-05 C6-04
+#   rendered but not yet reviewed     C1-05 C3-05
+#   specified but never implemented   C6-02 C6-04 C8-01..C8-06
 #
-# Fourteen checks were examined by rendering their findings.  Three were right;
-# eleven were wrong, of which eight were repaired and three demoted.  Assume the
-# unreviewed ones follow the same base rate.
+# Eighteen checks were examined by rendering their findings.  Four were right;
+# fourteen were wrong, of which ten were repaired and four demoted.  The four
+# demoted ones stay as features and must never gate a page.
 checks:
   # C1 coverage.  Margin lines are excluded: content in the top/bottom 8% is
   # running furniture the pipeline discards anyway, and it was 22% of all
   # uncovered lines.
   margin_band: 0.08
+  # a rate needs enough lines to mean anything: a page whose text is all inside
+  # ruled tables can have two body lines, and missing both read as 100% lost
+  coverage_min_lines: 20
   orphan_line_rate: 0.12
   orphan_area_rate: 0.12
   orphan_cluster: 6

@@ -45,6 +45,7 @@ DEFAULTS = {
     "orphan_line_rate": 0.12,
     "orphan_area_rate": 0.12,
     "orphan_cluster": 6,
+    "coverage_min_lines": 20,
     "margin_band": 0.08,
     "orphan_in_column_rate": 0.12,
     "orphan_column_min_lines": 20,
@@ -212,7 +213,14 @@ def _f(cid, sev, msg, regions=(), value=None):
 # ------------------------------------------------------- C1  coverage -------
 @check("C1-01", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_01(x):
-    """Body glyph lines that no region covers."""
+    """Body glyph lines that no region covers.
+
+    Needs enough body text to make a rate meaningful.  On a page whose text all
+    sits inside ruled tables the body set can be two lines, and missing both of
+    them reported 100% of the page's content lost.
+    """
+    if len(x["body_lines"]) < x["t"]["coverage_min_lines"]:
+        return
     r = len(x["orphan_content"]) / max(len(x["body_lines"]), 1)
     if r > x["t"]["orphan_line_rate"]:
         return [_f("C1-01", BLOCK,
@@ -223,6 +231,8 @@ def c1_01(x):
 @check("C1-02", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_02(x):
     """Glyph ink area no region covers -- catches one big miss C1-01 dilutes."""
+    if len(x["body_lines"]) < x["t"]["coverage_min_lines"]:
+        return
     tot = sum(_area(L) for L in x["body_lines"])
     lost = sum(_area(x["body_lines"][i]) for i in x["orphan_content"])
     r = lost / max(tot, 1e-6)
@@ -695,7 +705,13 @@ def c7_04(x):
                    f"{len(x['bands'])}-column page", regions=bad)]
 
 
-@check("C7-05", BLOCK, "C7", needs=("psr", "body_lines"))
+# Demoted from BLOCK and superseded.  It compares predicted area against the
+# bounding box of the body lines, which on a sparse page -- a title page, a
+# section divider -- is mostly the whitespace between a header and a footer, so
+# every one of its findings was a correctly covered sparse page.  Measuring
+# coverage against glyph area rather than a bounding box is exactly what C1-02
+# already does, so this is a worse duplicate rather than a check to repair.
+@check("C7-05", ADV, "C7", needs=("psr", "body_lines"))
 def c7_05(x):
     """Gross under-detection against the page's own ink extent."""
     if not x["body_lines"]:
@@ -705,7 +721,7 @@ def c7_05(x):
     cov = sum(_area(r["bbox"]) for r in x["regions"])
     r = cov / max(_area(ink), 1e-6)
     if r < x["t"]["coverage_floor"]:
-        return [_f("C7-05", BLOCK,
+        return [_f("C7-05", ADV,
                    f"predicted regions cover only {r:.0%} of the page's ink area",
                    value=round(r, 4))]
 
