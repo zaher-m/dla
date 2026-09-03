@@ -28,6 +28,7 @@ PROFILE        ?= $(or $(DLA_RUN_PROFILE),balanced)
 SETUP_PROFILE  ?= $(PROFILE)
 FILE           ?=
 STAGE          ?=
+VALIDATION_IMAGE ?= $(or $(DLA_VALIDATION_IMAGE),dla-validation:1)
 
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
@@ -41,7 +42,7 @@ PY   = /work/assets/envs/harness/bin/python
 .DEFAULT_GOAL := help
 .PHONY: help build setup setup-env up down restart logs shell status list \
         analyse corpus stage report clean-jobs clean-workspace doctor test \
-        verify test-ui validate validate-selftest
+        verify test-ui validate validate-selftest validation-image validate-page
 
 help:  ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -112,6 +113,18 @@ validate:  ## decide every page of a workspace: make validate WORKSPACE=benchmar
 
 validate-selftest:  ## assert the decision policy still drives the decision
 	$(EXEC) $(PY) -m validation.decide
+
+# The validation package builds as its own image: 300 MB against the suite's
+# 16 GB, no GPU, no weights. It is what other software runs, and its build
+# fails if the package has grown a dependency on the harness.
+validation-image:  ## build the standalone validation image
+	docker build -f docker/validation.Dockerfile -t $(VALIDATION_IMAGE) .
+
+validate-page:  ## decide one page: make validate-page PDF=f.pdf PAGE=4 LAYOUT=regions.json
+	@test -n "$(PDF)" -a -n "$(PAGE)" -a -n "$(LAYOUT)" \
+	  || { echo "usage: make validate-page PDF=f.pdf PAGE=4 LAYOUT=regions.json"; exit 2; }
+	docker run --rm -v "$(CURDIR):/w:ro" $(VALIDATION_IMAGE) \
+	  --pdf /w/$(PDF) --page $(PAGE) --layout /w/$(LAYOUT)
 
 verify:  ## render a built report in a headless browser and assert it works
 	$(EXEC) /work/assets/envs/shot/bin/python scripts/dev/verify_report.py \
