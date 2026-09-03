@@ -75,6 +75,58 @@ compare:
   region_z: 4.0
   font_shift: 0.4      # column changes beyond what the page structure allows
 
+# --- Decision policy ------------------------------------------------------
+#
+# What the pipeline does about a defect, as opposed to what the defect is.  The
+# checks measure the same thing under every setting here; only the consequence
+# changes, so this is the block to edit when the downstream changes and the one
+# to leave alone when a check is wrong.
+policy:
+  # Does the downstream keep DISCARD-bucket regions where a reviewer can pull
+  # them back, or drop them at write time?  Under `archive`, mislabelling a
+  # paragraph as a running header costs a retrieval miss until someone recovers
+  # it; under `drop` the text is gone.  Same defect, different severity.
+  discard: archive
+  severity:
+    archive:
+      C6-05: MAJOR
+      C6-06: MAJOR
+    drop: {}
+
+  # A page whose text layer cannot be trusted at all -- a scan, or born-digital
+  # text converted to vector outlines.  `defer` parks it for the scanned path,
+  # which does not exist yet; `escalate` sends it to a human instead.  Deferring
+  # is right only while scanned pages are out of scope.
+  unusable: defer
+
+  # The scorecard decides nothing until its weights mean something.  Both null
+  # means the deterministic veto is the only thing that can escalate a page.
+  risk:
+    escalate: null
+    reject: null
+
+  # Invented.  Not fitted, not calibrated, and deliberately not load-bearing:
+  # they order the review queue and nothing else.
+  weights:
+    severity:
+      MAJOR: 0.25
+      ADV: 0.05
+    unverifiable: 0.15
+    orphan_rate: 1.0
+    cross_merge_rate: 0.6
+    bucket_move_rate: 0.4
+
+  tasks:
+    C1: E1
+    C2: E2
+    C3: E2
+    C4: E3
+    C5: E2
+    C6: E4
+    C7: E6
+    C8: E6
+  task_order: [E1, E2, E3, E4, E6]
+
 # --- C1-C8: the deterministic checks -------------------------------------
 #
 # Fitted on a uniform random sample of 120 pages (seed 7) from 35 documents,
