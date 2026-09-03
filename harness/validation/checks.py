@@ -45,7 +45,7 @@ DEFAULTS = {
     "orphan_line_rate": 0.12,
     "orphan_area_rate": 0.12,
     "orphan_cluster": 6,
-    "coverage_min_lines": 20,
+    "coverage_min_lost": 8,
     "margin_band": 0.08,
     "orphan_in_column_rate": 0.12,
     "orphan_column_min_lines": 20,
@@ -215,13 +215,17 @@ def _f(cid, sev, msg, regions=(), value=None):
 def c1_01(x):
     """Body glyph lines that no region covers.
 
-    Needs enough body text to make a rate meaningful.  On a page whose text all
-    sits inside ruled tables the body set can be two lines, and missing both of
-    them reported 100% of the page's content lost.
+    Guarded on how much was lost, not on how much there was.  A rate alone
+    reported 100% of the page's content lost when a page whose text all sits
+    inside ruled tables had two body lines and both were missed.  Guarding on
+    the size of the body set instead suppressed the real findings, because a
+    dense table page has few body lines by construction -- the misses that
+    matter are large in absolute terms as well as in proportion.
     """
-    if len(x["body_lines"]) < x["t"]["coverage_min_lines"]:
+    lost = len(x["orphan_content"])
+    if lost < x["t"]["coverage_min_lost"]:
         return
-    r = len(x["orphan_content"]) / max(len(x["body_lines"]), 1)
+    r = lost / max(len(x["body_lines"]), 1)
     if r > x["t"]["orphan_line_rate"]:
         return [_f("C1-01", BLOCK,
                    f"content lost: {r:.1%} of body text lines sit in no region",
@@ -231,7 +235,7 @@ def c1_01(x):
 @check("C1-02", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_02(x):
     """Glyph ink area no region covers -- catches one big miss C1-01 dilutes."""
-    if len(x["body_lines"]) < x["t"]["coverage_min_lines"]:
+    if len(x["orphan_content"]) < x["t"]["coverage_min_lost"]:
         return
     tot = sum(_area(L) for L in x["body_lines"])
     lost = sum(_area(x["body_lines"][i]) for i in x["orphan_content"])
