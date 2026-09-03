@@ -12,6 +12,14 @@ Three modes, because the same code serves two very different callers:
                   its 29 pages: it stresses the dimensions that separate layout
                   models instead of over-weighting whatever is most common.
   ``first``       the first N pages in document order. Useful for a smoke test.
+  ``random``      a uniform random sample, seeded and therefore reproducible.
+                  Every other mode is biased on purpose: ``stratified`` seeks out
+                  the pages that separate models, ``first`` takes whatever the
+                  document opens with.  Both are useless for estimating how often
+                  something happens *in the corpus*, because every statistic they
+                  produce is conditioned on the selection rule.  This mode exists
+                  so escalation rates and error rates can be quoted about the
+                  corpus rather than about a sample chosen to be interesting.
 
 Rendering is part of selection rather than a separate stage because the two must
 agree exactly: every metric, every overlay and every model input is derived from
@@ -20,8 +28,9 @@ whole pipeline treats as the page's coordinate space.
 
     python -m core.select_pages --mode all
     python -m core.select_pages --mode stratified --workspace benchmark
+    python -m core.select_pages --mode random --max-pages 120 --seed 7
 """
-import argparse, hashlib, json, os, sys
+import argparse, hashlib, json, os, random, sys
 from collections import Counter
 
 import fitz
@@ -125,7 +134,10 @@ def render(sel, corpus, ws, dpi_primary, dpi_secondary):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--mode", default=None, choices=["all", "stratified", "first"])
+    ap.add_argument("--mode", default=None,
+                    choices=["all", "stratified", "first", "random"])
+    ap.add_argument("--seed", type=int, default=None,
+                    help="seed for --mode random; recorded so the sample is reproducible")
     ap.add_argument("--max-pages", type=int, default=None)
     ap.add_argument("--corpus", default=None)
     ap.add_argument("--workspace", default=None)
@@ -152,6 +164,13 @@ def main():
         sel = pick_stratified(pages, quotas, cap)
     elif mode == "first":
         sel = pages[:cap] if cap else list(pages)
+    elif mode == "random":
+        seed = a.seed if a.seed is not None else paths.get("selection", "seed", 0)
+        rng = random.Random(seed)
+        sel = list(pages)
+        rng.shuffle(sel)
+        sel = sel[:cap] if cap else sel
+        print(f"[select] uniform random sample, seed={seed}")
     else:
         sel = list(pages)
         if cap and len(sel) > cap:

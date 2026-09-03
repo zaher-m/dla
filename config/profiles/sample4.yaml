@@ -1,0 +1,15 @@
+# Four decorrelated leading systems, chosen to be fast enough for a
+# whole-corpus sample rather than for a benchmark table.
+#
+# One from each of four different training distributions: a DocLayNet RT-DETR,
+# a Japanese-trained Cascade Mask R-CNN, a Chinese-trained PP-DocLayout and a
+# DocStructBench YOLO.  Surya's VLM is excluded on cost (~64 s/page).
+name: sample4
+description: >
+  Four fast systems from four different training corpora, for measuring rates
+  over a random sample of pages.
+include:
+  - docling.heron
+  - ndl.layout
+  - paddleocr.pp_doclayoutv2
+  - dly.docstructbench_1280
