@@ -63,8 +63,11 @@ for m in pkgutil.iter_modules(validation.__path__):
         bad.append(f"{m.name}: {type(e).__name__}: {e}")
 if bad:
     sys.exit("validation does not stand alone:\n  " + "\n  ".join(bad))
-from validation import decide
-decide._selftest()
+from validation import selftest
+import tempfile
+with tempfile.TemporaryDirectory() as t:
+    n, _ = selftest.run(t)
+print(f"selftest: {len(n)} cases")
 print(f"validation standalone: {len(list(pkgutil.iter_modules(validation.__path__)))} modules")
 PY
 

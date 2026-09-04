@@ -111,8 +111,8 @@ validate:  ## decide every page of a workspace: make validate WORKSPACE=benchmar
 	$(EXEC) $(PY) -m validation.stage \
 	  --workspace $(or $(WORKSPACE),benchmark) --corpus $(or $(CORPUS),data/corpus_flat)
 
-validate-selftest:  ## assert the decision policy still drives the decision
-	$(EXEC) $(PY) -m validation.decide
+validate-selftest:  ## run the validation self-test: pages built in memory, no corpus
+	$(EXEC) $(PY) -m validation.selftest
 
 # The validation package builds as its own image: 300 MB against the suite's
 # 16 GB, no GPU, no weights. It is what other software runs, and its build

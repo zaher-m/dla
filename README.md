@@ -12,8 +12,6 @@ make setup     # environments + weights
 make up        # http://localhost:8080
 ```
 
-Upload a PDF in the page that opens.
-
 <p align="center">
   <img src="docs/orbit.svg" alt="Sixteen layout models arranged around one page, each panel showing that model's predicted regions" width="100%">
 </p>
@@ -47,6 +45,7 @@ make corpus DIR=pdfs/ WORKSPACE=out       # a whole directory into one workspace
 make list                                 # what is registered and what is installed
 make doctor                               # resolved paths, GPU visibility
 make test                                 # end-to-end smoke test
+make validate WORKSPACE=out               # decide every page of a workspace
 ```
 
 Inside the container:
@@ -109,11 +108,10 @@ A profile is a list of system ids in `config/profiles/`.
 
 ## How it works
 
-Twelve stages, each a separate process running `python -m core.<stage>` with `DLA_WORKSPACE` set to
-the job directory:
+Thirteen stages, each a separate process with `DLA_WORKSPACE` set to the job directory:
 
 `inventory` → `select` → `reference` → `run` → `metrics` → `consensus` → `evidence` → `ensemble` →
-`ratings` → `manifest` → `package` → `report`
+`ratings` → `validate` → `manifest` → `package` → `report`
 
 A job is a directory under `data/jobs/`. Its status is `status.json`, its result is
 `reports/index.html`, and its inputs and intermediate outputs sit beside them. No database, no queue
@@ -133,6 +131,86 @@ the visual comparison stands on its own.
 the registry's `repo` field.
 
 More detail in [docs/architecture.md](docs/architecture.md).
+
+## Validation
+
+Layout quality is easy to judge by eye and hard to judge at scale. A pipeline ingesting a corpus into a vector index, an object store and a table database makes one decision per page, thousands of times over, and a bad decision does not look like a lower score. It looks like a paragraph absent from the index, a table whose rows arrive interleaved, or a figure written into the text store. Those failures are silent: nothing raises, nothing logs, and a corpus-level recall average hides all of them.
+
+Verifying that with a held-out set means human labels, which do not exist for an arbitrary PDF and cost weeks to create. This package takes the other route.
+
+`validate` uses the reference the metrics already use: a born-digital PDF states in its own content stream where every glyph, image, vector drawing and ruling line sits. Each
+check asks whether a specific thing that would corrupt downstream data has happened, and the stage returns a verdict per page.
+
+| Decision | Meaning |
+|---|---|
+| `accept` | write it downstream |
+| `escalate` | a reviewer sees it, with the reason in words and the regions to open |
+| `defer` | this pipeline reads born-digital pages and that page is not one |
+| `reject` | off by default: rejecting a page needs a calibrated score, and that needs labels |
+
+A page escalates when a blocking check fires *or* when a blocking check could not run — an
+unavailable check is never recorded as a pass. Findings on one defect are grouped, so a reviewer gets one task per defect rather than one per check.
+
+### What it checks
+
+| Family | Asks | Checks | Blocking | Findings |
+|---|---|---|---|---|
+| C1 coverage | is content missing from every region? | 7 | 5 | 14.4% |
+| C2 boundaries | do region edges cut through text lines? | 2 | 0 | 32.3% |
+| C3 columns | are columns resolved, or merged and straddled? | 3 | 1 | 2.4% |
+| C4 order | is the reading order valid on its own terms? | 6 | 3 | 34.0% |
+| C5 duplication | is anything written to a store twice? | 2 | 0 | 18.9% |
+| C6 buckets | will each region reach the right store? | 5 | 3 | 11.8% |
+| C7 sanity | is the layout malformed on its own terms? | 4 | 2 | 8.5% |
+| C8 document | is this page unlike the rest of its document? | 5 | 0 | 7.1% |
+
+Findings per (system, page) pair over 424 pairs — 120 pages sampled uniformly at random from 23 documents, scored against four systems. A finding is not an escalation: only blocking checks escalate a page. Two of the 14 are blocking or not depending on `policy.discard`, since deleting a paragraph by mislabelling it a running header is recoverable if discarded regions are archived and permanent if they are dropped.
+
+### What it decides
+
+| System | Accept | Escalate | Defer |
+|---|---|---|---|
+| `docling.heron` | 73.3% | 15.0% | 11.7% |
+| `dly.docstructbench_1280` | 70.8% | 17.5% | 11.7% |
+| `ndl.layout` | 65.8% | 22.5% | 11.7% |
+| `paddleocr.pp_doclayoutv2` | 65.0% | 23.3% | 11.7% |
+
+Defer is a property of the corpus rather than the model: the same 14 pages have no usable text layer for everyone. 5 are scans; the other 9 are born-digital files whose glyphs were converted to vector outlines, so their text does not extract.
+
+### Using it
+
+Output lands in `<workspace>/validation/`:
+
+```
+decisions/<system>.json   one record per page, full evidence
+queue.json                escalations as reviewer tasks, typed E1-E7
+deferred.json             pages awaiting a path this pipeline does not have yet
+summary.json              the per-system mix, also embedded in the report
+```
+
+```bash
+make validate WORKSPACE=benchmark CORPUS=data/corpus_flat
+make validate-selftest                    # pages built in memory, no corpus needed
+```
+
+One page at a time, from Python:
+
+```python
+from validation.api import decide_page
+d = decide_page("report.pdf", 4, regions)     # regions in 300 dpi pixel space
+d["decision"], d["task"], d["findings"]
+```
+
+`harness/validation/` depends on PyMuPDF, numpy, PyYAML and Pillow and on nothing else in this
+repository, so it also ships alone — 314 MB against the suite image's 16 GB, no GPU, no weights:
+
+```bash
+make validation-image
+make validate-page PDF=doc.pdf PAGE=4 LAYOUT=regions.json
+```
+
+The escalation rate is a review cost. It is fitted to bound how often the checks fire, and says nothing about how often an accepted page is wrong — that needs annotated pages.
+[harness/validation/README.md](harness/validation/README.md) has the check list, the thresholds and the known gaps.
 
 ## Configuration
 
@@ -166,6 +244,7 @@ config/            dla.yaml and run profiles
 docker/            Dockerfile, compose, entrypoint
 docs/              architecture, adding a model
 harness/core/      pipeline, ingestion, reference, metrics, report generation
+harness/validation/  page checks, the decision layer, the escalation queue
 harness/adapters/  one per model family
 harness/setup/     one per environment
 harness/report/    report shell and viewer
