@@ -51,6 +51,10 @@ COPY config/checks.yaml /app/config/checks.yaml
 # The learned table score. Without it C6-02 silently falls back to the
 # structural test alone, which is the behaviour the model was fitted to replace.
 COPY config/table_model.json /app/config/table_model.json
+# The learned figure-vs-content score.  Without it every shaded table's text
+# leaves the body and the coverage family stops seeing 8% of the corpus, with
+# no error -- `selftest` asserts both models load for exactly that reason.
+COPY config/graphic_model.json /app/config/graphic_model.json
 
 # The boundary check.  `core` is not in this image; if the package reaches for
 # it, this line fails and the build does too.

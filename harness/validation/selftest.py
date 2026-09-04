@@ -17,7 +17,8 @@ import sys
 
 import fitz
 
-from validation import audit, checks, decide, orderlm, tablefeat, verdicts
+from validation import audit, checks, decide, graphics, orderlm
+from validation import reference, tablefeat, verdicts
 from validation.api import decide_page
 
 DPI_SCALE = 300 / 72.0
@@ -43,6 +44,41 @@ def two_column(path):
 def empty(path):
     doc = fitz.open()
     doc.new_page(width=595, height=842)
+    doc.save(path)
+    doc.close()
+
+
+def shaded_table(path):
+    """A table drawn the way a report writer draws one: banded cell fills, no
+    rules.  The reference collects the bands as a graphic area, so without the
+    repair every cell of it leaves the body text."""
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    for r in range(14):
+        y = 120 + r * 30
+        page.draw_rect(fitz.Rect(60, y, 535, y + 28),
+                       color=None, fill=(0.88, 0.91, 0.96) if r % 2 else (1, 1, 1))
+        for c, x in enumerate((70, 220, 330, 440)):
+            page.insert_text((x, y + 19), "1 234 567" if c else "Item %d" % r,
+                             fontsize=10)
+    doc.save(path)
+    doc.close()
+
+
+def chart(path):
+    """A plotted curve with small axis labels: a genuine figure, whose text is
+    the figure's own and must stay out of the body."""
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.draw_rect(fitz.Rect(60, 120, 535, 520), color=(0.6, 0.6, 0.6),
+                   fill=(0.97, 0.97, 0.99))
+    for i in range(8):
+        x = 90 + i * 55
+        page.draw_bezier(fitz.Point(x, 460 - i * 8), fitz.Point(x + 18, 300),
+                         fitz.Point(x + 36, 420), fitz.Point(x + 55, 250 + i * 9),
+                         color=(0.1, 0.3, 0.7), width=2)
+        page.insert_text((x, 505), "20%02d" % (10 + i), fontsize=5)
+        page.insert_text((66, 460 - i * 40), "%d" % (i * 20), fontsize=5)
     doc.save(path)
     doc.close()
 
@@ -163,6 +199,37 @@ def run(tmp):
         "the table model was fitted on different features"
     assert len(tm["w"]) == len(tablefeat.NAMES)
     ok.append("table model ships and matches its features")
+
+    # Same for the graphic model, and for the reference field it reads: without
+    # either, every shaded table's text silently leaves the body and the
+    # coverage family stops seeing 8% of the corpus.
+    gm = graphics.load_model()
+    assert gm is not None, "config/graphic_model.json is missing from this build"
+    assert list(gm["features"]) == list(graphics.NAMES), \
+        "the graphic model was fitted on different features"
+    ok.append("graphic model ships and matches its features")
+
+    shaded, plotted = tmp + "/shaded.pdf", tmp + "/chart.pdf"
+    shaded_table(shaded)
+    chart(plotted)
+
+    def _ref(path):
+        doc = fitz.open(path)
+        page = doc[0]
+        psr = reference.page_reference(page, int(page.rect.width * DPI_SCALE),
+                                       int(page.rect.height * DPI_SCALE))
+        doc.close()
+        return psr
+
+    ps, pc = _ref(shaded), _ref(plotted)
+    assert ps.get("graphic_shape") is not None, \
+        "the reference no longer records what a graphic cluster is drawn from"
+    assert ps["graphic_areas"], "the shaded table did not cluster as a graphic"
+    assert len(graphics.repaired_body(ps)) > len(ps["body_text_lines"]), \
+        "the shaded table's cells were not recovered into the body"
+    assert len(graphics.repaired_body(pc)) == len(pc["body_text_lines"]), \
+        "the chart's axis labels were moved into the body"
+    ok.append("a shaded table is recovered and a chart is left alone")
     return ok, good
 
 

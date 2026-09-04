@@ -242,6 +242,114 @@ where the geometric test set agrees. Retrain for a different corpus.
 
 ---
 
+## E7. Repairing the reference: figure, or the document's own content?
+
+E4 records that text density does not separate a shaded table from a chart, and
+E6 built a learned table score. Neither addresses the defect. Rendering every
+graphic cluster on the corpus that holds four or more glyph lines -- 118 of
+them, adjudicated from the image before any score was joined -- shows the
+question was posed wrongly:
+
+| What the cluster really is | | Holding |
+|---|---|---|
+| a genuine figure: chart, pie, logo | 51 | 1787 lines |
+| a table: shaded, banded, or a header row | 50 | |
+| prose: a heading, a source note, a framed paragraph, a form | 16 | 2297 lines together |
+| blank | 1 | |
+
+**56% are not figures**, and a third of those are not tables either. That is why
+both earlier attempts failed: the table score puts prose at "not a table"
+exactly where it puts a chart (median 0.001 against 0.003), so it cannot see two
+thirds of the damage. The question is figure against content.
+
+Everything in those 66 clusters is outside `body_text_lines` -- **8.0% of all
+glyph lines, on 17% of pages** -- so the coverage family, five of whose checks
+block, cannot see any of it.
+
+**What separates them is what the cluster is drawn from**, which the content
+stream states and the reference now records as six numbers per cluster
+(`graphic_shape`, purely additive). A chart is built from curves and overlapping
+fills and labelled in type smaller than the body; a shaded table or a tinted
+paragraph is built from plain rectangles and holds body-sized text in rows.
+
+Eight features, logistic regression, `config/graphic_model.json` at 595 bytes.
+No feature selection: the eight are fixed, so nothing leaks into the estimate.
+
+| | |
+|---|---|
+| out-of-fold AUC, grouped by document (13 documents) | **0.977** |
+| against a system-consensus label that never saw the adjudication | 0.987 |
+| single best feature alone, same protocol | 0.857 |
+
+The last row is the point. E4's conclusion was that no threshold does this, and
+that survives: the best single coordinate reaches 0.857 out of fold where eight
+together reach 0.977.
+
+| Floor | Content recovered | Figures miscalled | Lines recovered | Lines wrongly moved |
+|---|---|---|---|---|
+| 0.50 | 62/66 | 6/51 | 1937 | 245 |
+| **0.80** | **59/66** | **2/51** | **1875** | **67** |
+| 0.90 | 35/66 | 0/51 | 1153 | 0 |
+
+0.80 ships: 28 recovered lines per line wrongly moved.
+
+**Effect on real output**, 424 (system, page) pairs, every change verified by
+rendering the findings that moved:
+
+| | HEAD | repaired | |
+|---|---|---|---|
+| C1-07 a graphic with no media region | 34 | 6 | shaded tables charged for not being images |
+| C2-01 boundaries cutting lines | 37 | 21 | rate over a denominator that now holds the whole page |
+| C4-08 a unit read interleaved | 51 | 40 | 13 removed, 2 added, all rendered |
+| C1-05 no text region | 4 | 3 | |
+
+Escalation falls 3.3 points for the best system and 5.8 for the worst, and every
+removal that was rendered was a false positive.
+
+**Two defects this surfaced in checks that were passing.**
+
+`C1-05` fired whenever a page had no text-bucket region, counted over every line
+on the page. A page that is one large table, correctly boxed as a table, has no
+text region and does not need one -- the check was charging systems for being
+right, unseen while a shaded table's cells sat outside the body. Counting only
+*uncovered* lines instead gives the defect back: when every region is relabelled
+`figure` the lines are still covered, and detection of that fell from 94% to
+31% of injected pages. It now counts lines that no text **or table** region
+covers, which is right in both directions.
+
+`C4-08` took its structural units from `figure_areas`, which it shares with
+C1-07, where excluding tables is correct and here is not. Extending it to every
+content cluster was tried and rendered: a banded table is clustered one column
+at a time, and a column's cells are *meant* to arrive one per row -- 36 findings,
+all on tables read correctly. Unioning the columns back into whole tables was
+tried too and is worse, reaching across both panels of a two-panel page and
+taking baseline firing from 1 page to 7. What ships is the clusters that stand
+alone, by the row-sharing test `page_columns` already uses.
+
+**What it did not do.** Escalation did not rise anywhere. The systems on this
+corpus do detect the shaded tables, so the recovered lines are already covered
+and no new miss appears. The blindness was real but unexploited here, which the
+injection sweep confirms rather than contradicts: `drop_largest` detection rises
+3 points and `drop_region` 1, because the coverage family can now see content it
+previously could not. Two rows fall -- `merge_horizontal` at full intensity from
++6.6% to +0.1% -- and that lift came from the same table-column mechanism that
+produced the 13 false positives. It is not worth buying back that way.
+
+**Not applied to the shared reference.** `core.metrics` scores text recall
+against `body_text_lines`, so repairing the reference itself moves published
+benchmark numbers. Measured, it would add 15.2% to the recall denominator on one
+workspace and 3.2% on the other, and move every system's line coverage **up** by
+0.3-1.4 points without changing the order. That is a product decision, not a
+validation one, so validation repairs its own view and the reference is left
+saying exactly what the file says.
+
+**Limits.** 118 hand labels over 13 documents of Arabic financial and
+statistical reports; retrain elsewhere. Two errors at 0.80 are clusters holding
+both a table and a chart, where no single label is right -- a clustering
+granularity problem, not a scoring one.
+
+---
+
 ## E4. Negative results
 
 Kept because a documented dead end is cheaper than repeating it.
@@ -250,7 +358,10 @@ Kept because a documented dead end is cheaper than repeating it.
 clusters filled vector drawings and a table with coloured cell fills is such a
 cluster. Density p50 0.27 for tables against 0.28 for charts; the best combined
 rule caught 6 of 7 tables but also 11 of 34 charts. A density filter applied in
-the PSR deleted genuine charts from 8 benchmark pages and was reverted.
+the PSR deleted genuine charts from 8 benchmark pages and was reverted. Still
+true: density reaches 0.693 as a single feature in E7, against 0.977 for the
+eight together. What was wrong was the question -- a third of the clusters at
+issue are prose, not tables.
 
 **Ruling lines do not separate a page column from a table column.** Of 13 pages
 where two detected bands are merged into one, 1 sits inside a ruled grid.
@@ -268,18 +379,20 @@ system's escalation rate from 34.2% to 15.8%, with the count thresholds
 
 ## Open, and why
 
-**Partial bucket misroute (E1).** Needs a real answer to "is this region actually
-a table", which geometry has now failed at twice. The natural next step is a
-learned classifier over the rendered crop, which is also the natural answer to
-the page-column/table-column ambiguity in E4. Both are instant judgements for a
-human eye and neither has yielded to a threshold.
+**A page column and a table column still look the same.** E7 answers the other
+half of E4 and not this one: it says whether a filled cluster holds content, not
+whether two bands of text are one table or two columns. The clusters carry no
+information on a page whose columns are plain text.
 
-**Reading order has an unused oracle.** For born-digital pages the text is
-available, and a correct order produces fluent language where a wrong one
-produces interleaved fragments. A character n-gram model trained on the corpus
-itself — no external model, works for Arabic, CPU only — would let a reading
-order be scored on its own likelihood rather than against another derivation.
-C4 is the largest finding family and currently the largest escalation driver.
+**Mixed clusters.** `cluster_boxes` glues a table to the chart beneath it, and
+one label is then wrong whichever way it goes. Both of E7's errors at the
+shipped floor are this. It is a granularity problem in the clustering, not a
+scoring one, and splitting a cluster is a different experiment.
+
+**Partial bucket misroute (E1).** `class_to_figure` and `class_to_header` at 30%
+still show +3-4%. C6-03, C6-05 and C6-06 all detect them; none blocks under
+`policy.discard: archive`. That is a policy question, like discard itself, and
+not a detection gap.
 
 **False-accept rate.** Still needs verdicts from the audit stratum. Nothing in
 this document is a false-accept rate.

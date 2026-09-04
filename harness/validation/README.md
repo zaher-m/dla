@@ -18,6 +18,7 @@ That reference is not ground truth. It is a deterministic reading of the file, w
 signals.py    what the page's content stream says: glyphs, ink, direction, encoding
 router.py     -> page_kind, psr_trust, direction.  Derived, never passed in
 reference.py  the PDF Structural Reference: lines, blocks, graphics, grids, columns
+graphics.py   is a filled cluster a figure, or content the reference swallowed?
 lines.py      reading lines rebuilt from the reference's boxes
 assemble.py   layout + reference -> the blocks, order and buckets a consumer receives
 checks.py     36 checks -> findings, each naming regions and saying what is wrong
@@ -28,6 +29,11 @@ stage.py      the same over a workspace, writing decisions, queue, backlog, summ
 `tablefeat.py` scores how table-like a region is, from fourteen geometric
 features and weights fitted out of fold (`config/table_model.json`, 992 bytes,
 inference in numpy — the package carries no GPU and no deep-learning dependency).
+`graphics.py` does the same for a filled cluster, from what the content stream
+says it is drawn from: a chart is curves and small labels, a shaded table or a
+tinted paragraph is rectangles and body-sized text in rows. It decides 8% of
+this corpus's glyph lines, which the reference moves out of the body and the
+coverage family could not otherwise see.
 `orderlm.py` trains a character n-gram on the corpus's own text and scores how
 plausibly a reading order joins words — the only check that reads what the page
 says. `compare.py`, `psr_layout.py`, `document.py`, `tables.py` and `buckets.py`
@@ -79,7 +85,7 @@ One page, one task. Findings are grouped first, so four checks firing on one def
 | `C1-02` | BLOCK | Glyph ink area no region covers — catches one big miss C1-01 dilutes |
 | `C1-03` | BLOCK | Vertically contiguous run of orphans: a missed block, not stray glyphs |
 | `C1-04` | BLOCK | Orphans inside a real text column, as opposed to page margins |
-| `C1-05` | BLOCK | No text region at all on a page that plainly has text |
+| `C1-05` | BLOCK | No text or table region covers the text on the page |
 | `C1-06` | MAJOR | Uncovered lines in the footnote band at the foot of the page |
 | `C1-07` | MAJOR | A real graphic with no MEDIA region on it |
 | `C2-01` | MAJOR | Region boundaries cutting through glyph lines |
@@ -122,9 +128,11 @@ at a different file.
 python -m validation.selftest      # or: make validate-selftest
 ```
 
-Eight cases, each running the whole chain against a PDF written in memory: a clean layout is
+Fourteen cases, each running the whole chain against a PDF written in memory: a clean layout is
 accepted; a missing column, a missing page, text boxed as a figure and body marked as a running
-header all escalate as E1; a page with no text layer defers; the discard policy moves a severity.
+header all escalate as E1; a page with no text layer defers; the discard policy moves a severity;
+a shaded table drawn in banded fills is recovered into the body and a plotted chart is left alone;
+both learned models load and match the features they were fitted on.
 The standalone image runs this at build time, so a change that breaks the chain — or that gives the
 package a dependency on `core` — fails the build.
 
@@ -142,11 +150,13 @@ accepted although its lines are read left-right-left-right. `validation.selftest
 Ruling lines do not separate the two (1 of 13 collapses sits in a ruled grid) and neither do
 gutters. Separating them needs annotated pages.
 
-**A shaded table registers as a graphic.** `core.reference` clusters filled vector drawings, and a
-table with coloured cell fills is a cluster of filled drawings, so its text moves out of the body
-lines. 6-8% of glyph lines on 9-34% of pages. Density does not separate it from a chart: p50 0.27
-against 0.28, and the best combined rule caught 6 of 7 tables but also 11 of 34 charts. Compensated
-locally in `tables.py` and `figure_areas`, documented rather than patched.
+**A shaded table registers as a graphic — repaired here, not upstream.** `reference.py` clusters
+filled vector drawings, and a table with coloured cell fills is one, so its text leaves the body
+lines: 8% of glyph lines on 17% of pages, and a third of it is prose rather than tables. `graphics.py`
+puts it back (E7, out-of-fold AUC 0.977 grouped by document). The shared reference is left alone
+because `core.metrics` scores text recall against `body_text_lines`; repairing it there would move
+every published number, measured as +0.3 to +1.4 points of line coverage for every system, without
+changing the order. Two clusters holding both a table and a chart are still wrong either way.
 
 **Reading order is derived, not given.** No system measured on this corpus emits one, so
 `assemble.derive_order` supplies it and the order checks are partly measuring that. Each was run

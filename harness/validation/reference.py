@@ -115,6 +115,35 @@ def column_bands(line_boxes, W, H):
     return bands
 
 
+def _composition(cluster, comp):
+    """What one graphic cluster is drawn from.
+
+    Six numbers, recorded because the cluster's *box* cannot say whether the
+    glyphs inside it are a chart's axis labels or a shaded table's cells, and
+    the difference decides whether that text is body content.  Purely additive:
+    nothing already in the reference changes, and a consumer that ignores the
+    field sees exactly what it saw before.
+    """
+    def a(b):
+        return max((b[2] - b[0]) * (b[3] - b[1]), 1e-6)
+
+    ins = [d for d in comp
+           if (max(0.0, min(d[0][2], cluster[2]) - max(d[0][0], cluster[0]))
+               * max(0.0, min(d[0][3], cluster[3]) - max(d[0][1], cluster[1]))
+               ) > 0.5 * a(d[0])]
+    kinds = [k for d in ins for k in d[1]]
+    nk = max(len(kinds), 1)
+    return {
+        "n": len(ins),
+        "items": len(kinds),
+        "rect": round(sum(1 for k in kinds if k == "re") / nk, 4),
+        "curve": round(sum(1 for k in kinds if k in ("c", "qu")) / nk, 4),
+        "fills": len({d[2] for d in ins if d[2] is not None}),
+        "fill_area": round(min(sum(a(d[0]) for d in ins if d[2] is not None)
+                               / a(cluster), 4.0), 4),
+    }
+
+
 def page_reference(page, px_width, px_height):
     """Geometric reference for one page, in the pixel space of its render.
 
@@ -185,10 +214,19 @@ def page_reference(page, px_width, px_height):
         except Exception:
             pass
 
-    vec, hl, vl = [], [], []
+    vec, hl, vl, comp = [], [], [], []
     page_area_pt = rect.width * rect.height
     for dr in page.get_drawings():
         r = dr["rect"]
+        # What each drawing is *made of*, kept before any size filter.  A chart
+        # is drawn with curves and overlapping fills; a shaded table is drawn
+        # with rectangles.  The boxes alone cannot tell them apart, and the
+        # difference decides whether the glyphs inside a filled cluster are a
+        # figure's labelling or the document's own content.
+        comp.append((S([r.x0, r.y0, r.x1, r.y1]),
+                     [it[0] for it in dr["items"]],
+                     None if dr.get("fill") is None
+                     else tuple(round(c, 3) for c in dr["fill"])))
         if r.width < 2 and r.height < 2:
             continue
         # A drawing counts as *graphic content* only if it is filled or has
@@ -221,6 +259,7 @@ def page_reference(page, px_width, px_height):
     graphics = cluster_boxes(images + big_vec, gap=10)
     graphics = [g for g in graphics
                 if 0.006 * pa < (g[2]-g[0]) * (g[3]-g[1]) < 0.62 * pa]
+    shapes = [_composition(g, comp) for g in graphics]
 
     # Table grid candidates: cluster the ruling strokes into whole grids.  The
     # linkage gap has to exceed a table row height at 300 dpi (~40-90 px) or a
@@ -260,6 +299,8 @@ def page_reference(page, px_width, px_height):
         "body_text_lines": body_text, "graphic_text_lines": graphic_text,
         "table_text_lines": table_text,
         "image_rects": images, "graphic_areas": graphics,
+        # Aligned to graphic_areas, one entry each.  See _composition.
+        "graphic_shape": shapes,
         "ruling_h": len(hl), "ruling_v": len(vl), "grid_candidates": grid,
         # The stroke geometry, not just the counts: deciding whether a ruled
         # box is a table or a framed callout needs to know how many distinct

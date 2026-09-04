@@ -27,6 +27,7 @@ import yaml
 from validation import assemble as assemblemod
 from validation import compare as comparemod
 from validation import document as docmod
+from validation import graphics as gfxmod
 from validation import lines as linesmod
 from validation import orderlm
 from validation import psr_layout as psrlayout
@@ -81,6 +82,7 @@ DEFAULTS = {
     "media_max_text_frac": 0.18,
     "table_min_lines": 6,
     "table_score_floor": 0.05,
+    "graphic_content_floor": 0.80,
     "discard_body_lines": 3,
     "discard_line_rate": 0.15,
     "out_of_bounds": 0.02,
@@ -139,26 +141,71 @@ def _band_of(box, bands, W, full=0.62):
     return hits[0] if len(hits) == 1 else None
 
 
-def figure_areas(psr, max_text_frac=0.18):
+def figure_areas(psr, floor=None, max_text_frac=0.18):
     """Graphic areas that are really figures.
 
     `graphic_areas` clusters filled vector drawings, and a financial table drawn
     with coloured header rows and banded cell fills is a cluster of filled
     drawings.  Whole tables therefore arrive here as figures, and a check asking
     "where is the figure region for this graphic" then charges a detector for
-    not boxing a table as an image.
+    not boxing a table as an image.  A third of the misattributed clusters are
+    not tables either but prose on a tint -- a heading, a source note, a framed
+    paragraph.
 
-    Text density separates them, measured on visually confirmed examples: a
-    chart covers 3-8% of its own area with glyphs, a table 21-33%.  The same
-    correction belongs in the PSR itself, where it would also repair body-line
-    attribution, but a threshold fitted here deleted genuine charts from the
-    benchmark pages, so it stays local until it can be validated properly.
+    `validation.graphics` decides it from what the cluster is drawn from.  The
+    density band below is the fallback for a reference built before
+    `graphic_shape` existed; it is documented in E4 as not separating the two,
+    and `selftest` asserts the model is present so a package that quietly loses
+    it fails rather than degrading to this.
     """
+    areas = psr.get("graphic_areas") or []
+    if psr.get("graphic_shape") and gfxmod.load_model() is not None:
+        fig, _content, unknown = gfxmod.split(
+            psr, load_thresholds()["graphic_content_floor"]
+            if floor is None else floor)
+        return [areas[i] for i in sorted(fig + unknown)]
     out = []
-    for g in (psr.get("graphic_areas") or []):
+    for g in areas:
         ga = max(_area(g), 1e-6)
         ta = sum(_area(L) for L in psr["text_lines"] if _cover(L, g) >= 0.6)
         if ta / ga <= max_text_frac:
+            out.append(g)
+    return out
+
+
+def _standalone_content(psr, floor, tol=0.25):
+    """Content clusters that are a block, not one column of a wider table.
+
+    A tinted paragraph or a whole shaded table has to be read in one go.  One
+    column of a banded table does not -- its cells are read one per row, so
+    requiring them to arrive together fires on every table that is right, which
+    it did on 36 pages.  A cluster whose lines share rows with lines outside it
+    is one of those, the same test `page_columns` uses to tell a table's columns
+    from a page's.
+
+    Unioning row-sharing clusters back into whole tables first was tried and is
+    worse: on a two-panel page the union reaches across both panels, and C4-08's
+    firing on the reference's own layout, where there is no defect to find, went
+    from 1 page to 7.
+    """
+    if not psr.get("graphic_shape") or gfxmod.load_model() is None:
+        return []
+    areas = psr.get("graphic_areas") or []
+    _fig, content, _unk = gfxmod.split(psr, floor)
+    out = []
+    for i in content:
+        g = areas[i]
+        held = gfxmod.held_lines(g, psr)
+        if not held:
+            continue
+        outside = [L for L in psr["text_lines"]
+                   if _cover(L, g) < 0.6 and _inter(L, g) == 0.0]
+        paired = 0
+        for L in held:
+            h = max(L[3] - L[1], 1e-6)
+            if any(min(L[3], o[3]) - max(L[1], o[1]) > h * 0.5 for o in outside):
+                paired += 1
+        if paired / len(held) <= tol:
             out.append(g)
     return out
 
@@ -326,11 +373,27 @@ def c1_04(x):
 
 @check("C1-05", BLOCK, "C1", needs=("psr", "body_lines"))
 def c1_05(x):
-    """No text region at all on a page that plainly has text."""
-    if len(x["read_lines"]) >= x["t"]["min_text_lines"] and not any(
+    """No text region at all on a page that plainly has text.
+
+    Counted over the lines no TEXT *or TABLE* region covers, not over every line
+    on the page.  A page that is one large table, correctly boxed as a table,
+    holds plenty of text and needs no text region; scoring this on the page's
+    whole line count charges the system for being right, which it did on four
+    pages once a shaded table's cells were recovered into the body.  Counting
+    only uncovered lines was tried instead and gives the defect back: when every
+    region is relabelled `figure` the lines are still covered, and the check
+    that caught that on 94% of injected pages fell to 31%.  A table's cells
+    belong in a table region; body text swallowed by a figure does not.
+    """
+    keep = [r["bbox"] for r, b in zip(x["regions"], x["region_bucket"])
+            if b in (TEXT, TABLE)]
+    n = sum(1 for L in x["read_lines"]
+            if not any(_cover(L, b) >= 0.6 for b in keep))
+    if n >= x["t"]["min_text_lines"] and not any(
             b == TEXT for b in x["region_bucket"]):
         return [_f("C1-05", BLOCK,
-                   f"no text region on a page carrying {len(x['read_lines'])} text lines")]
+                   f"no text region on a page carrying {n} text lines that no "
+                   f"text or table region covers", value=n)]
 
 
 @check("C1-06", MAJOR, "C1", needs=("psr", "body_lines"))
@@ -571,7 +634,14 @@ def c4_08(x):
     based on coverage or on boxes.
     """
     pos = x["read_all_pos"]
-    units = [q["bbox"] for q in tablemod.qualified(x["psr"])] + x["graphics"]
+    # Figures, plus the filled clusters that hold content and stand alone.
+    # Taking every content cluster was tried and rendered: a banded table is
+    # clustered one column at a time, and a column's cells are *meant* to arrive
+    # spread out, one per row -- 36 findings, all on tables read correctly.  A
+    # cluster whose lines share rows with lines outside it is one of those, the
+    # same test `page_columns` uses to tell a table's columns from a page's.
+    units = ([q["bbox"] for q in tablemod.qualified(x["psr"])]
+             + x["graphics"] + x["content_units"])
     bad = []
     for u in units:
         inside = [pos[k] for k, L in enumerate(x["read_all"])
@@ -1146,7 +1216,14 @@ def context(regions, psr, stream, route, t=None, doc=None,
     t = t or load_thresholds()
     W, H = psr["width"], psr["height"]
     all_lines = psr["text_lines"]
-    body = psr.get("body_text_lines") or []
+    # Body text, with the lines a filled cluster wrongly swallowed put back.
+    # The reference moves everything inside a graphic area out of the body, and
+    # 56% of the clusters holding text on this corpus are not figures but shaded
+    # tables and tinted prose -- 8% of all glyph lines, on 17% of pages, that
+    # the coverage family could not see and so could never charge anyone for.
+    # `page_columns` deliberately keeps reading the raw body: a table's numeric
+    # columns re-entering the ink profile is the separate gap E4 records.
+    body = gfxmod.repaired_body(psr, t["graphic_content_floor"])
     heights = [b[3] - b[1] for b in all_lines] or [10.0]
 
     owner = stream["line_block"]
@@ -1176,6 +1253,7 @@ def context(regions, psr, stream, route, t=None, doc=None,
         "table_grids": [q["bbox"] for q in tablemod.qualified(psr)],
         "graphics": figure_areas(psr),
         "raw_graphics": psr.get("graphic_areas") or [],
+        "content_units": _standalone_content(psr, t["graphic_content_floor"]),
         "region_bucket": [to_bucket(r.get("class")) for r in regions],
         "region_lines": [region_lines.get(i, []) for i in range(len(regions))],
         "orphan_body": orphan_body,

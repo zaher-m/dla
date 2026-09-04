@@ -155,25 +155,29 @@ unavailable check is never recorded as a pass. Findings on one defect are groupe
 
 | Family | Asks | Checks | Blocking | Findings |
 |---|---|---|---|---|
-| C1 coverage | is content missing from every region? | 7 | 5 | 14.4% |
-| C2 boundaries | do region edges cut through text lines? | 2 | 0 | 32.3% |
+| C1 coverage | is content missing from every region? | 7 | 5 | 6.6% |
+| C2 boundaries | do region edges cut through text lines? | 2 | 0 | 27.1% |
 | C3 columns | are columns resolved, or merged and straddled? | 3 | 1 | 2.4% |
-| C4 order | is the reading order valid on its own terms? | 7 | 3 | 34.0% |
-| C5 duplication | is anything written to a store twice? | 2 | 0 | 18.9% |
-| C6 buckets | will each region reach the right store? | 5 | 4 | 11.8% |
+| C4 order | is the reading order valid on its own terms? | 7 | 3 | 23.1% |
+| C5 duplication | is anything written to a store twice? | 3 | 1 | 30.9% |
+| C6 buckets | will each region reach the right store? | 5 | 4 | 11.6% |
 | C7 sanity | is the layout malformed on its own terms? | 4 | 2 | 8.5% |
 | C8 document | is this page unlike the rest of its document? | 5 | 0 | 7.1% |
 
-Findings per (system, page) pair over 424 pairs — 120 pages sampled uniformly at random from 23 documents, scored against four systems. A finding is not an escalation: only blocking checks escalate a page. Two of the 15 are blocking or not depending on `policy.discard`, since deleting a paragraph by mislabelling it a running header is recoverable if discarded regions are archived and permanent if they are dropped.
+Findings per (system, page) pair over 424 pairs — 120 pages sampled uniformly at random from 23 documents, scored against four systems. A finding is not an escalation: only blocking checks escalate a page. Two of the 16 blocking checks are blocking or not depending on `policy.discard`, since deleting a paragraph by mislabelling it a running header is recoverable if discarded regions are archived and permanent if they are dropped.
+
+Three small learned scores stand where a threshold failed, each fitted out of fold and held out by document, with weights shipped as JSON and inference a dot product in numpy — the package carries no GPU and no deep-learning dependency. One tells C6-02 how table-like a region is, one scores a reading order as language for C4-11, and one decides whether a block of coloured fill is a figure or a table the reference would otherwise have hidden from the whole coverage family. [docs/validation-experiments.md](docs/validation-experiments.md) records how each was measured, including what did not work.
 
 ### What it decides
 
 | System | Accept | Escalate | Defer |
 |---|---|---|---|
-| `docling.heron` | 73.3% | 15.0% | 11.7% |
 | `dly.docstructbench_1280` | 70.8% | 17.5% | 11.7% |
-| `ndl.layout` | 65.8% | 22.5% | 11.7% |
-| `paddleocr.pp_doclayoutv2` | 65.0% | 23.3% | 11.7% |
+| `ndl.layout` | 69.2% | 19.2% | 11.7% |
+| `paddleocr.pp_doclayoutv2` | 67.5% | 20.8% | 11.7% |
+| `docling.heron` | 32.5% | 55.8% | 11.7% |
+
+`docling.heron` is the strongest system on every benchmark metric and the worst here: it emits two detections per box, at identical coordinates with different labels, on 94% of pages. Every page it touches would be written to its store twice. No metric based on matching predictions to a reference can see that, which is the case for this stage in one line.
 
 Defer is a property of the corpus rather than the model: the same 14 pages have no usable text layer for everyone. 5 are scans; the other 9 are born-digital files whose glyphs were converted to vector outlines, so their text does not extract.
 

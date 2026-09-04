@@ -342,6 +342,13 @@ checks:
   # where "certainly not a table" is wrong 0.7% of the time, measured out of fold
   # and held out by document -- see docs/validation-experiments.md, E6.
   table_score_floor: 0.05
+  # A filled cluster scoring at or above this is the document's own content, not
+  # a figure, so its glyph lines go back into the body the coverage family reads
+  # and `figure_areas` stops calling it a figure.  config/graphic_model.json;
+  # E7.  Out of fold and held out by document, 0.80 recovers 1875 of the 2297
+  # wrongly held glyph lines and moves 67 that belong to a figure -- 28 to 1.
+  # 0.90 recovers 1153 with none wrong, if a corpus needs that.
+  graphic_content_floor: 0.80
   discard_body_lines: 3
   discard_line_rate: 0.15
 
