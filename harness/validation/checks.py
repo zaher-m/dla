@@ -59,6 +59,7 @@ DEFAULTS = {
     "graphic_miss_count": 2,
     "overlap_regions": 4,
     "overlap_region_rate": 0.30,
+    "duplicate_region_rate": 0.20,
     "footnote_band": 0.12,
     "graphic_miss_area": 0.02,
     "line_cut_rate": 0.15,
@@ -748,6 +749,43 @@ def c5_03(x):
 
 
 # ------------------------------------------------------- C6  buckets --------
+@check("C5-04", BLOCK, "C5", needs=("psr",))
+def c5_04(x):
+    """Wholesale duplication: the detector emitted its own output twice.
+
+    C5-01 and C5-03 measure how much is duplicated and stay advisory of a policy
+    question -- whether the consumer deduplicates.  This one is not a question.
+    A page whose regions are near-exact copies of each other is a broken
+    detector, and no downstream arrangement makes that acceptable.
+
+    Added after a defect-injection sweep (validation/sensitivity.py) found that
+    duplicating every region on the page changed the block rate by 0.0%: the
+    entire page written to its store twice, and nothing in the gate objected.
+    """
+    n = len(x["regions"])
+    if n < 4:
+        return
+    exact = 0
+    seen = []
+    tol = max(x["line_h"] * 0.5, 4.0)
+    for i, r in enumerate(x["regions"]):
+        b = r["bbox"]
+        for j, q in seen:
+            c = q["bbox"]
+            if (x["region_bucket"][i] == x["region_bucket"][j]
+                    and all(abs(b[k] - c[k]) <= tol for k in range(4))):
+                exact += 1
+                break
+        else:
+            seen.append((i, r))
+    rate = exact / max(n, 1)
+    if rate > x["t"]["duplicate_region_rate"]:
+        return [_f("C5-04", BLOCK,
+                   f"{exact} of {n} regions ({rate:.0%}) repeat another region of "
+                   f"the same kind at the same place: the page would be written "
+                   f"to its store twice", value=round(rate, 4))]
+
+
 @check("C6-01", BLOCK, "C6", needs=("psr", "grids"))
 def c6_01(x):
     """A ruled table with no table region on it.

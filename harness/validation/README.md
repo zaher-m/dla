@@ -20,7 +20,7 @@ router.py     -> page_kind, psr_trust, direction.  Derived, never passed in
 reference.py  the PDF Structural Reference: lines, blocks, graphics, grids, columns
 lines.py      reading lines rebuilt from the reference's boxes
 assemble.py   layout + reference -> the blocks, order and buckets a consumer receives
-checks.py     34 checks -> findings, each naming regions and saying what is wrong
+checks.py     35 checks -> findings, each naming regions and saying what is wrong
 decide.py     deterministic veto, then a score -> accept | escalate | defer | reject
 stage.py      the same over a workspace, writing decisions, queue, backlog, summary
 ```
@@ -89,6 +89,7 @@ One page, one task. Findings are grouped first, so four checks firing on one def
 | `C4-10` | MAJOR | On an RTL page, blocks sharing a row are read left to right |
 | `C5-01` | MAJOR | Two same-bucket regions overlapping substantially |
 | `C5-03` | MAJOR | A glyph line covered by two text regions is stored twice |
+| `C5-04` | BLOCK | Wholesale duplication: the page would be written to its store twice |
 | `C6-01` | BLOCK | A ruled table with no table region on it |
 | `C6-02` | MAJOR | A table region with nothing about the page to support it |
 | `C6-03` | ADV | A figure region that is really text: content sent to object storage |
@@ -175,6 +176,14 @@ wrong.
 `verdicts.estimate` reports the rate with a Wilson interval, which stays honest at zero errors where
 the normal approximation returns a zero-width interval. At 300 audited pages with none wrong the rate
 could still be 1.0%; at 50, it could be 6.0%.
+
+## Experiments
+
+[docs/validation-experiments.md](../../docs/validation-experiments.md) records what was
+measured and what changed as a result, including the negative results. Two entries
+matter for reading the checks above: a defect-injection sweep
+(`validation.sensitivity`) that found what the gate fails to catch, and the
+control that decided which order checks are allowed to block.
 
 ## Not built
 

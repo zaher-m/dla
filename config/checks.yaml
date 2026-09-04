@@ -317,6 +317,10 @@ checks:
   overlap_regions: 4
   overlap_region_rate: 0.30
   double_emit_rate: 0.02
+  # C5-04 wholesale duplication.  Not fitted against a fire rate: a fifth of a
+  # page's regions repeating another at the same place is a broken detector at
+  # any threshold, and on real output the check fires on nothing.
+  duplicate_region_rate: 0.20
 
   # C6 buckets.  C6-01 runs only against grids that qualify as tables under
   # validation/tables.py -- on a random sample 90% of the "missed tables" a

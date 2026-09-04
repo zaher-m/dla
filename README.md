@@ -164,7 +164,7 @@ unavailable check is never recorded as a pass. Findings on one defect are groupe
 | C7 sanity | is the layout malformed on its own terms? | 4 | 2 | 8.5% |
 | C8 document | is this page unlike the rest of its document? | 5 | 0 | 7.1% |
 
-Findings per (system, page) pair over 424 pairs — 120 pages sampled uniformly at random from 23 documents, scored against four systems. A finding is not an escalation: only blocking checks escalate a page. Two of the 14 are blocking or not depending on `policy.discard`, since deleting a paragraph by mislabelling it a running header is recoverable if discarded regions are archived and permanent if they are dropped.
+Findings per (system, page) pair over 424 pairs — 120 pages sampled uniformly at random from 23 documents, scored against four systems. A finding is not an escalation: only blocking checks escalate a page. Two of the 15 are blocking or not depending on `policy.discard`, since deleting a paragraph by mislabelling it a running header is recoverable if discarded regions are archived and permanent if they are dropped.
 
 ### What it decides
 
@@ -216,7 +216,7 @@ make validate-page PDF=doc.pdf PAGE=4 LAYOUT=regions.json
 ```
 
 The escalation rate is a review cost. It is fitted to bound how often the checks fire, and says nothing about how often an accepted page is wrong — that needs annotated pages.
-[harness/validation/README.md](harness/validation/README.md) has the check list, the thresholds and the known gaps.
+[harness/validation/README.md](harness/validation/README.md) has the check list, the thresholds and the known gaps; [docs/validation-experiments.md](docs/validation-experiments.md) records what was measured to get there, including what the gate still fails to catch.
 
 ## Configuration
 
