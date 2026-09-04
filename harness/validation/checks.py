@@ -563,12 +563,12 @@ def c4_08(x):
     and the table is destroyed -- the failure mode that survives every metric
     based on coverage or on boxes.
     """
-    pos = {ln: k for k, ln in enumerate(x["stream"]["sequence"])}
+    pos = x["read_all_pos"]
     units = [q["bbox"] for q in tablemod.qualified(x["psr"])] + x["graphics"]
     bad = []
     for u in units:
-        inside = [pos[i] for i, L in enumerate(x["all_lines"])
-                  if i in pos and _cover(L, u) >= 0.6]
+        inside = [pos[k] for k, L in enumerate(x["read_all"])
+                  if k in pos and _cover(L, u) >= 0.6]
         if len(inside) < x["t"]["contiguity_min_lines"]:
             continue
         span = max(inside) - min(inside) + 1
@@ -577,9 +577,13 @@ def c4_08(x):
             bad.append((len(inside), intruders))
     if bad:
         n, intr = max(bad, key=lambda b: b[1])
+        # "Spliced into" described the count but not the defect: the lines of one
+        # table or figure are not read consecutively, and a reviewer needs to be
+        # told that rather than to picture an insertion.
         return [_f("C4-08", BLOCK,
-                   f"a table or figure of {n} lines is read with {intr} lines "
-                   f"of other content spliced into it", value=intr)]
+                   f"the {n} lines of one table or figure are not read together: "
+                   f"{intr} lines of other content fall between the first and "
+                   f"the last", value=intr)]
 
 
 @check("C4-09", ADV, "C4", needs=("psr", "stream"))
@@ -1107,6 +1111,21 @@ def context(regions, psr, stream, route, t=None, doc=None):
                    if k is not None and i in ink}
         return [k for k in range(len(read_lines))
                 if k not in covered and k in has_ink]
+
+    # The same reconstruction over *every* text line, not only body text, and a
+    # reading-line-level view of the stream.  The order checks below measure how
+    # far apart a structural unit's lines are dragged, and measuring that in
+    # glyph boxes reports a table of 17 lines read with 171 lines spliced into
+    # it on a page that holds nothing like 171 lines.
+    read_all, read_all_owner = linesmod.reading_lines(all_lines)
+    seen, seq_lines = set(), []
+    for li in stream["sequence"]:
+        k = read_all_owner[li] if li < len(read_all_owner) else None
+        if k is not None and k not in seen:
+            seen.add(k)
+            seq_lines.append(k)
+    ctx["read_all"] = read_all
+    ctx["read_all_pos"] = {k: i for i, k in enumerate(seq_lines)}
 
     ctx["read_lines"] = read_lines
     # Two views, because the margin filter is not the same question twice.

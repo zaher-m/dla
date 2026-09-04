@@ -212,6 +212,8 @@ policy:
 # fire rate on a model against fire rate on that reference --
 #
 #   C4-08   13.3%  vs   3.1%   attributable to the layout, stays blocking
+#                                 (11.2% vs 2.0% after the reading-line rebuild:
+#                                  the separation holds in either unit)
 #   C4-09    9.2%  vs  16.3%   fires more on correct regions, demoted to ADV
 #   C4-10    3.1%  vs   4.1%   inconclusive, demoted to MAJOR
 #
@@ -273,7 +275,12 @@ checks:
   band_span: 0.2
   band_imbalance: 0.85
 
-  # C4 order
+  # C4 order.  contiguity_min_lines counts RECONSTRUCTED READING LINES, like the
+  # C1 counts above: C4-08 measured spans in the reference's glyph boxes until
+  # the rebuild and reported "a table of 17 lines read with 171 lines spliced
+  # into it" on a page holding nothing like 171 lines.  Rate 13.9% -> 12.0%; the
+  # criterion is a ratio, so unlike the coverage family it was mostly
+  # scale-invariant, and what the fix repaired was the number a reviewer reads.
   excess_band_transitions: 2
   order_inversions: 2
   # C4-07 compares against the order the PDF's own geometry implies.  It is the
