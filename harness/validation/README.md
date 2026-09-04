@@ -63,7 +63,7 @@ One page, one task. Findings are grouped first, so four checks firing on one def
 | E4 | C6 buckets | pick the right store from four buttons |
 | E5 | committee disagreement | choose A, B, or neither — not built, needs a committee |
 | E6 | C7, C8, or unverifiable | annotate the page |
-| E7 | random audit | confirm or correct — the unbiased error estimate, not built |
+| E7 | random audit | confirm or correct — the only unbiased error estimate |
 
 ## Checks
 
@@ -150,8 +150,33 @@ advisory; C4-10 is inconclusive and does not block.
 `policy.unusable: escalate` to queue them for a human instead. Note that most deferred pages on the
 fitted corpus were not scans but born-digital files whose glyphs were converted to vector outlines.
 
+## The loop
+
+A fixed share of *accepted* pages goes to a reviewer as task E7, at `policy.audit.rate`. Without it
+every label comes from a page that failed a check, and how often an accepted page is wrong cannot be
+estimated at all. Selection is a hash of the page id, the system and the seed, so membership does not
+move as the corpus grows and a stratum gathered over months stays one sample. Never lower the rate to
+clear a backlog. An audit does not change a decision: the page is accepted and written, and the task
+is raised alongside it.
+
+Reviewers append to `<workspace>/validation/verdicts.jsonl`, one object per line:
+
+```json
+{"page_id": "page_017", "system": "docling.heron", "frame": "audit",
+ "outcome": "confirm", "reviewer": "qa1", "seconds": 38}
+```
+
+`frame` is the field that matters. Escalation labels say how precise the checks are; audit labels say
+how often an accepted page is wrong. Only the second is a false-accept rate, and only if the two are
+never averaged together. `outcome: "correct"` must carry the corrected `regions`. A confirmation is a
+label too — a risk model trained only on corrections learns which pages get flagged, not which are
+wrong.
+
+`verdicts.estimate` reports the rate with a Wilson interval, which stays honest at zero errors where
+the normal approximation returns a zero-width interval. At 300 audited pages with none wrong the rate
+could still be 1.0%; at 50, it could be 6.0%.
+
 ## Not built
 
-The committee (E5) needs measured error decorrelation between systems, which needs labels. So does
-the random audit (E7), the calibrated risk model, and any statement of a false-accept rate. Those
-are the next phase, and they start when annotated pages exist.
+The committee (E5) needs measured error decorrelation between systems, and the calibrated risk model
+needs enough verdicts to fit. Both start when the loop above has run for a while.

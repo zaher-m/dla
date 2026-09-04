@@ -183,10 +183,16 @@ Output lands in `<workspace>/validation/`:
 
 ```
 decisions/<system>.json   one record per page, full evidence
-queue.json                escalations as reviewer tasks, typed E1-E7
+queue.json                reviewer tasks, typed E1-E7
 deferred.json             pages awaiting a path this pipeline does not have yet
 summary.json              the per-system mix, also embedded in the report
+verdicts.jsonl            what reviewers sent back, appended one per line
 ```
+
+A fixed share of *accepted* pages is queued as task E7 as well. Without that, every label comes from
+a page that already failed a check, and how often an **accepted** page is wrong — the number you
+actually want — cannot be estimated at all. It is the only part that cannot be added later: pages
+ingested before the sampler existed are gone.
 
 ```bash
 make validate WORKSPACE=benchmark CORPUS=data/corpus_flat

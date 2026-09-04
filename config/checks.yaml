@@ -99,6 +99,16 @@ policy:
   # is right only while scanned pages are out of scope.
   unusable: defer
 
+  # The random audit: a fixed share of ACCEPTED pages goes to a reviewer anyway.
+  # This is the only source of an unbiased error estimate, because every other
+  # label comes from a page that failed a check.  Never lower the rate to clear
+  # a backlog -- a sample that flexes with load is not a sample.  The seed fixes
+  # membership: a page's selection depends only on its id, the system and this
+  # number, so the stratum stays valid as the corpus grows.
+  audit:
+    rate: 0.015
+    seed: 20260904
+
   # The scorecard decides nothing until its weights mean something.  Both null
   # means the deterministic veto is the only thing that can escalate a page.
   risk:

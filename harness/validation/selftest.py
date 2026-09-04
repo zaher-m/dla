@@ -17,7 +17,7 @@ import sys
 
 import fitz
 
-from validation import checks, decide
+from validation import audit, checks, decide, verdicts
 from validation.api import decide_page
 
 DPI_SCALE = 300 / 72.0
@@ -105,6 +105,39 @@ def run(tmp):
 
     decide._selftest()
     ok.append("decision logic")
+
+    # The audit stratum has to survive the corpus growing, or a sample gathered
+    # over months is several unrelated samples.
+    ids = [f"page_{i:04d}" for i in range(400)]
+    more = ids + [f"page_{i:04d}" for i in range(400, 4000)]
+    pick = lambda xs, sys_: {p for p in xs if audit.sampled(p, sys_, 0.015, 7)}
+    assert pick(ids, "a") == pick(more, "a") & set(ids), \
+        "audit membership moved when the corpus grew"
+    assert pick(ids, "a") != pick(ids, "b"), "audit stratum is not per system"
+    n = 40000
+    hit = sum(audit.sampled(f"p{i}", "s", 0.02, 3) for i in range(n))
+    assert 0.017 < hit / n < 0.023, f"audit rate is {hit/n:.4f}, wanted 0.02"
+    ok.append("audit sampling is stable and on rate")
+
+    # A zero-width interval at zero errors is how a quality programme convinces
+    # itself of a rate it has not measured.
+    lo, hi = verdicts.wilson(0, 50)
+    assert lo == 0.0 and 0.02 < hi < 0.15, f"wilson(0,50) = {lo},{hi}"
+    e = verdicts.estimate(
+        [{"page_id": "a", "system": "s", "frame": "audit", "outcome": "confirm"},
+         {"page_id": "b", "system": "s", "frame": "escalation", "outcome": "correct",
+          "regions": [{"bbox": [0, 0, 1, 1]}]}])
+    assert e["audit_n"] == 1 and e["escalation_n"] == 1, e
+    assert e["false_accept_rate"] == 0.0, "escalation labels leaked into the estimate"
+    for bad in ({"page_id": "a", "system": "s", "frame": "both", "outcome": "confirm"},
+                {"page_id": "a", "system": "s", "frame": "audit", "outcome": "correct"},
+                {"page_id": "a", "frame": "audit", "outcome": "confirm"}):
+        try:
+            verdicts.validate(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"verdict should have been rejected: {bad}")
+    ok.append("verdicts keep their frames apart")
     return ok, good
 
 

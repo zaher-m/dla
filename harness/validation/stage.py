@@ -12,6 +12,10 @@ products the rest of the system consumes:
     validation/deferred.json             pages this pipeline cannot process yet
     validation/summary.json              small enough for a report bundle
 
+and reads one back:
+
+    validation/verdicts.jsonl            what reviewers sent back
+
 The three files are the interface.  Nothing downstream imports this package: a
 consumer reads JSON with a `schema` field on it, which is what lets the queue be
 served to an annotation platform, the summary be embedded in a report, and both
@@ -22,7 +26,9 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from validation import audit as auditmod  # noqa: E402
 from validation import decide as decidemod  # noqa: E402
+from validation import verdicts as verdictsmod  # noqa: E402
 from validation.gate import gate  # noqa: E402
 
 # Bump on any change to the shape of a record below.  Consumers should refuse a
@@ -70,6 +76,13 @@ def write(ws, decisions, policy):
         with open(os.path.join(d_, "decisions", s + ".json"), "w", encoding="utf8") as f:
             json.dump({"schema": SCHEMA, "system": s, "pages": rows}, f, indent=1)
 
+    # The audit stratum: accepted pages a reviewer looks at anyway.  Marked on
+    # the decision record before the queue is built, so a record always says
+    # whether the page was audited even if the queue is regenerated.
+    for s, rows in decisions.items():
+        for r in auditmod.select(rows, s, policy):
+            r["audit"] = True
+
     queue = [{"system": s, "page_id": r["page_id"], "doc": r["doc"],
               "task": r["task"], "reason": r["reason"], "risk": r["risk"],
               # The reviewer is told what fired, in words, and which regions to
@@ -79,6 +92,14 @@ def write(ws, decisions, policy):
                             "message": f["message"]} for f in r["findings"]]}
              for s, rows in decisions.items() for r in rows
              if r["decision"] == "escalate"]
+    # E7 never competes with the rest of the queue and is never down-sampled
+    # when the queue is busy: the moment it flexes with load it stops being a
+    # random sample of what was accepted, and the estimate it exists to support
+    # is gone.
+    queue += [{"system": s, "page_id": r["page_id"], "doc": r["doc"],
+               "task": "E7", "reason": "random audit of an accepted page",
+               "risk": r["risk"], "findings": []}
+              for s, rows in decisions.items() for r in rows if r.get("audit")]
     queue.sort(key=lambda q: (q["task"], -q["risk"]))
     with open(os.path.join(d_, "queue.json"), "w", encoding="utf8") as f:
         json.dump({"schema": SCHEMA, "tasks": queue}, f, indent=1)
@@ -109,6 +130,20 @@ def write(ws, decisions, policy):
     summary = summarise(decisions, policy)
     summary["deferred"] = {"n_pages": len(deferred),
                            "by_reason": dict(Counter(x["reason"] for x in deferred))}
+    rate, seed = auditmod.settings(policy)
+    summary["audit"] = {
+        "rate": rate, "seed": seed,
+        "n_sampled": sum(1 for rows in decisions.values()
+                         for r in rows if r.get("audit"))}
+    # Whatever reviewers have sent back so far, and what it is worth.  Absent on
+    # a fresh workspace, which is the normal state and not an error.
+    try:
+        v = verdictsmod.load(ws)
+    except ValueError as e:
+        print(f"[validation] verdicts unreadable: {e}")
+        v = []
+    if v:
+        summary["verdicts"] = verdictsmod.estimate(v)
     with open(os.path.join(d_, "summary.json"), "w", encoding="utf8") as f:
         json.dump(summary, f, indent=1)
     return summary, len(queue)
@@ -147,6 +182,16 @@ def main():
         print(f"  {s:30s} {v['pages']:4d} pages  accept {v['accept_rate']:5.1%}  "
               f"escalate {v['escalate_rate']:5.1%}  defer {v['defer_rate']:5.1%}")
     print(f"[validation] {n} escalations -> {os.path.join(ws, 'validation', 'queue.json')}")
+    a = summary["audit"]
+    print(f"[validation] {a['n_sampled']} accepted page(s) sampled for audit "
+          f"at {a['rate']:.1%} (seed {a['seed']})")
+    est = summary.get("verdicts")
+    if est:
+        r = est["false_accept_rate"]
+        print(f"[validation] verdicts: {est['audit_n']} audited, "
+              + (f"false-accept {r:.1%} (95% CI {est['ci95'][0]:.1%}-{est['ci95'][1]:.1%})"
+                 if r is not None else "no audit labels yet")
+              + (f" -- {est['note']}" if est.get("note") else ""))
     dfr = summary.get("deferred") or {}
     if dfr.get("n_pages"):
         why = ", ".join(f"{k} ({v})" for k, v in dfr["by_reason"].items())
