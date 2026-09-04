@@ -285,6 +285,14 @@ checks:
   band_span: 0.2
   band_imbalance: 0.85
 
+  # C4-11 reads the words, so it only means anything where there are words.
+  # Measured on 994 corpus pages choosing a true order over a shuffled one: 94%
+  # on pages with prose, 80% on table-like pages, 85% overall.  Advisory at any
+  # of those rates -- see docs/validation-experiments.md, E5.
+  lm_min_lines: 12
+  lm_min_prose: 0.15
+  lm_margin: 0.5
+
   # C4 order.  contiguity_min_lines counts RECONSTRUCTED READING LINES, like the
   # C1 counts above: C4-08 measured spans in the reference's glyph boxes until
   # the rebuild and reported "a table of 17 lines read with 171 lines spliced

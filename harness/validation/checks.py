@@ -28,6 +28,7 @@ from validation import assemble as assemblemod
 from validation import compare as comparemod
 from validation import document as docmod
 from validation import lines as linesmod
+from validation import orderlm
 from validation import psr_layout as psrlayout
 from validation import tables as tablemod
 from validation.buckets import bucket as to_bucket, TEXT, TABLE, MEDIA, DISCARD
@@ -50,6 +51,9 @@ DEFAULTS = {
     "min_text_lines": 10,
     "orphan_line_rate": 0.12,
     "orphan_area_rate": 0.12,
+    "lm_min_lines": 12,
+    "lm_min_prose": 0.15,
+    "lm_margin": 0.5,
     "orphan_cluster": 3,
     "coverage_min_lost": 4,
     "margin_band": 0.08,
@@ -689,6 +693,42 @@ def c4_07(x):
                    value=round(tau, 4))]
 
 
+@check("C4-11", ADV, "C4", needs=("psr", "stream", "words"))
+def c4_11(x):
+    """The order reads worse as language than a plainly available alternative.
+
+    The only order check that reads the words.  It compares the stream's own
+    junctions against the same lines taken in simple top-to-bottom order: if the
+    page really is one flowing column the two are close, and if the stream has
+    interleaved two columns the alternative reads better.
+
+    Advisory and gated on prose.  A junction between two numeric table cells
+    carries no language at all, and the measured accuracy falls from 94% on
+    pages with prose to 80% on table-like ones (E5).  80% is a feature; nothing
+    at that rate may gate a page.
+    """
+    txt = x["line_text"]
+    seq = [i for i in x["stream"]["sequence"] if i < len(txt)]
+    if len(seq) < x["t"]["lm_min_lines"]:
+        return
+    words = [txt[i] for i in seq]
+    if orderlm.prosiness(words) < x["t"]["lm_min_prose"]:
+        return                     # no language to read; the score means nothing
+    got = orderlm.score(x["lm"], words)
+    alt_idx = sorted(seq, key=lambda i: (round(x["all_lines"][i][1], 1),
+                                         x["all_lines"][i][0]))
+    if alt_idx == seq or got is None:
+        return
+    alt = orderlm.score(x["lm"], [txt[i] for i in alt_idx])
+    if alt is None:
+        return
+    if alt - got > x["t"]["lm_margin"]:
+        return [_f("C4-11", ADV,
+                   f"the reading order joins words less plausibly than simply "
+                   f"reading the page top to bottom ({got:.2f} against "
+                   f"{alt:.2f} per junction)", value=round(alt - got, 3))]
+
+
 @check("C5-01", MAJOR, "C5", needs=())
 def c5_01(x):
     """Two same-bucket regions overlapping substantially."""
@@ -1080,7 +1120,8 @@ def _outside_margins(lines, idx, H, m):
     return [i for i in idx if m * H <= (lines[i][1] + lines[i][3]) / 2 <= (1 - m) * H]
 
 
-def context(regions, psr, stream, route, t=None, doc=None):
+def context(regions, psr, stream, route, t=None, doc=None,
+            line_text=None, lm=None):
     t = t or load_thresholds()
     W, H = psr["width"], psr["height"]
     all_lines = psr["text_lines"]
@@ -1119,6 +1160,11 @@ def context(regions, psr, stream, route, t=None, doc=None):
         "orphan_body": orphan_body,
         "orphan_content": _outside_margins(body, orphan_body, H, t["margin_band"]),
         "doc": doc,
+        # The words on each line, aligned to psr["text_lines"], supplied by a
+        # caller that has the PDF open.  The PSR stays geometric: putting the
+        # text in it would multiply every workspace's size for one check.
+        "line_text": line_text,
+        "lm": lm,
     }
     # Coverage is scored against reconstructed reading lines, not against the
     # reference's boxes.  On this corpus a "line" from PyMuPDF is often a single
@@ -1229,6 +1275,10 @@ def available(x):
         have.add("doc")
     else:
         na.add("doc")            # a single page cannot be unlike its document
+    if x.get("line_text") and x.get("lm"):
+        have.add("words")
+    else:
+        na.add("words")          # no caller supplied the text, or no model
     if x.get("reference_stream") and x["stream"]["order_source"] == "model":
         have.add("reference_stream")
     else:
@@ -1236,8 +1286,9 @@ def available(x):
     return have, na
 
 
-def run(regions, psr, stream, route, t=None, doc=None):
-    x = context(regions, psr, stream, route, t, doc)
+def run(regions, psr, stream, route, t=None, doc=None,
+        line_text=None, lm=None):
+    x = context(regions, psr, stream, route, t, doc, line_text, lm)
     have, na = available(x)
     findings, skipped, inapplicable = [], [], []
     for c in REGISTRY:

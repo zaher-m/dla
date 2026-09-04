@@ -17,7 +17,7 @@ import sys
 
 import fitz
 
-from validation import audit, checks, decide, verdicts
+from validation import audit, checks, decide, orderlm, verdicts
 from validation.api import decide_page
 
 DPI_SCALE = 300 / 72.0
@@ -138,6 +138,22 @@ def run(tmp):
             continue
         raise AssertionError(f"verdict should have been rejected: {bad}")
     ok.append("verdicts keep their frames apart")
+
+    # The order model must prefer real text to spliced text, and must be trained
+    # on within-line text only -- if it ever sees a junction it has memorised an
+    # ordering and the score means nothing.
+    sents = ["the quarterly report shows a rise in net foreign assets",
+             "the balance of payments recorded a surplus this year",
+             "domestic liquidity grew by seven percent over the period",
+             "interest rates remained unchanged during the second quarter"]
+    m = orderlm.train(sents * 40)
+    a = orderlm.score(m, ["the quarterly report shows a", "rise in net foreign assets"])
+    b = orderlm.score(m, ["the quarterly report shows a", "surplus this year"])
+    assert a is not None and b is not None and a > b, \
+        f"the model does not prefer the real continuation: {a} vs {b}"
+    assert orderlm.prosiness(["1.2 3.4 5.6", "7.8 9.0"]) == 0.0
+    assert orderlm.prosiness(sents) == 1.0
+    ok.append("order model prefers real continuations")
     return ok, good
 
 

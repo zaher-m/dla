@@ -120,6 +120,62 @@ key. C4-10 on the reference layout went from 18.4% to 4.1% once both were fixed.
 
 ---
 
+## E5. A language model as a reading-order oracle
+
+Every other order check compares one derivation against another or tests an
+order's internal consistency. None reads the words. But for a born-digital page
+the words are there, and a correct order joins them into running text while a
+wrong one splices unrelated fragments.
+
+A character 5-gram plus a word bigram, trained on the corpus's own text — no
+external model, no download, Arabic-capable, CPU only. Trained on **within-line
+text only**, so it never sees a line-to-line transition and cannot have memorised
+an ordering; scoring then asks a question it was not trained on.
+
+```bash
+python -m validation.orderlm --workspace data/sample120 --corpus data/corpus_flat
+```
+
+**A methodological trap, worth recording.** The first version scored a 12-character
+window either side of each junction and separated a true order from a shuffled
+one at 72% — barely useful. The reason was that most n-grams in that window sit
+*inside* a line, so the score mostly measured "is this Arabic", identically for
+any pairing. Scoring only the n-grams that straddle the boundary, plus the word
+bigram across it, is what makes the measurement about order at all.
+
+**Accuracy**, choosing the true order over a shuffled one, 994 corpus pages:
+
+| Pages | vs shuffled | vs reversed |
+|---|---|---|
+| with prose (prosiness ≥ 0.45) | 88% | 93% |
+| mixed (0.15–0.45) | 94% | 92% |
+| table-like (< 0.15) | 80% | 77% |
+| all | 85% | 83% |
+
+The split is the result. A junction between two numeric table cells carries no
+language, so the oracle is strong where there is prose and weak where there is
+not — and the median page of this corpus has prosiness 0.13. It detects gross
+corruption; on a local swap of two adjacent three-line blocks it is at chance
+(47%), because only two junctions change.
+
+**What could not be concluded.** On 261 pages where two column bands are
+detected, column-major order scores higher than row-major 82% of the time. That
+*cannot* be read as accuracy: if a page is really a table then row-major is the
+correct order, and which of the two a page is remains exactly the open question
+of E4. The number is reported so nobody re-derives it and mistakes it for a
+validation.
+
+**What was done.** C4-11, advisory, gated on `prosiness >= 0.15` and 12 lines.
+Nothing at 85% may block a page.
+
+**And an unexpected positive.** On all 42 sampled pages where the check can
+speak, the pipeline's derived order scores *better* than the plain top-to-bottom
+alternative — median −0.30, best case +0.13 against a margin of 0.5. That is the
+first evidence that `assemble.derive_order` is sound which does not come from
+comparing it to another derivation. C4-11 firing on nothing is the finding.
+
+---
+
 ## E4. Negative results
 
 Kept because a documented dead end is cheaper than repeating it.

@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import fitz  # noqa: E402
 
 from validation import assemble, checks, document, router, signals  # noqa: E402
+from validation.orderlm import line_texts, order_model  # noqa: E402
 
 
 def page_docs(ws):
@@ -99,6 +100,8 @@ def evaluate(ws, corpus, systems=None):
                           and json.load(open(os.path.join(norm, s, "_run.json"))
                                         ).get("status") == "ok"]
     profiles, docs = doc_profiles(ws, ref, routes, norm, systems)
+    texts = line_texts(ws, corpus, ref)
+    lm = order_model(ws, texts)
     fire, na, unver = Counter(), Counter(), Counter()
     per_sys = Counter(); per_sys_n = Counter(); per_sys_unver = Counter()
     kinds = Counter(); pairs = 0
@@ -122,7 +125,8 @@ def evaluate(ws, corpus, systems=None):
             regions = json.load(open(f))["regions"]
             stream = assemble.assemble(regions, psr, direction=r["direction"])
             res = checks.run(regions, psr, stream, r,
-                             doc=profiles.get((s, docs.get(pid))))
+                             doc=profiles.get((s, docs.get(pid))),
+                             line_text=texts.get(pid), lm=lm)
             for x in res["findings"]:
                 fire[x["id"]] += 1
             for x in res["inapplicable"]:

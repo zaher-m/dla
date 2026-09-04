@@ -20,12 +20,15 @@ router.py     -> page_kind, psr_trust, direction.  Derived, never passed in
 reference.py  the PDF Structural Reference: lines, blocks, graphics, grids, columns
 lines.py      reading lines rebuilt from the reference's boxes
 assemble.py   layout + reference -> the blocks, order and buckets a consumer receives
-checks.py     35 checks -> findings, each naming regions and saying what is wrong
+checks.py     36 checks -> findings, each naming regions and saying what is wrong
 decide.py     deterministic veto, then a score -> accept | escalate | defer | reject
 stage.py      the same over a workspace, writing decisions, queue, backlog, summary
 ```
 
-`compare.py`, `psr_layout.py`, `document.py`, `tables.py` and `buckets.py` support these.
+`orderlm.py` trains a character n-gram on the corpus's own text and scores how
+plausibly a reading order joins words — the only check that reads what the page
+says. `compare.py`, `psr_layout.py`, `document.py`, `tables.py` and `buckets.py`
+support these.
 `evaluate.py` reports how often each check fires over a corpus, and `inspect.py` renders findings as
 contact sheets — every check here was verified by looking at its findings as images, and of the
 eighteen examined that way, four were right and fourteen were wrong.
@@ -87,6 +90,7 @@ One page, one task. Findings are grouped first, so four checks firing on one def
 | `C4-08` | BLOCK | A table or figure is read interleaved with the text around it |
 | `C4-09` | ADV | The stream jumps back up the page without changing column |
 | `C4-10` | MAJOR | On an RTL page, blocks sharing a row are read left to right |
+| `C4-11` | ADV | The order joins words less plausibly than reading top to bottom |
 | `C5-01` | MAJOR | Two same-bucket regions overlapping substantially |
 | `C5-03` | MAJOR | A glyph line covered by two text regions is stored twice |
 | `C5-04` | BLOCK | Wholesale duplication: the page would be written to its store twice |

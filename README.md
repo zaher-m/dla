@@ -158,7 +158,7 @@ unavailable check is never recorded as a pass. Findings on one defect are groupe
 | C1 coverage | is content missing from every region? | 7 | 5 | 14.4% |
 | C2 boundaries | do region edges cut through text lines? | 2 | 0 | 32.3% |
 | C3 columns | are columns resolved, or merged and straddled? | 3 | 1 | 2.4% |
-| C4 order | is the reading order valid on its own terms? | 6 | 3 | 34.0% |
+| C4 order | is the reading order valid on its own terms? | 7 | 3 | 34.0% |
 | C5 duplication | is anything written to a store twice? | 2 | 0 | 18.9% |
 | C6 buckets | will each region reach the right store? | 5 | 3 | 11.8% |
 | C7 sanity | is the layout malformed on its own terms? | 4 | 2 | 8.5% |

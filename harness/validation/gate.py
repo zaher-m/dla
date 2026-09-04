@@ -20,6 +20,7 @@ from collections import Counter, defaultdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from validation import assemble, checks, decide as decidemod  # noqa: E402
+from validation.orderlm import line_texts, order_model  # noqa: E402
 from validation.evaluate import doc_profiles, routes_for  # noqa: E402
 
 
@@ -34,6 +35,8 @@ def gate(ws, corpus, systems=None, policy=None):
                                         ).get("status") == "ok"]
     p = policy or decidemod.load_policy()
     score = decidemod.scorer(p)
+    texts = line_texts(ws, corpus, ref)
+    lm = order_model(ws, texts)
     profiles, docs = doc_profiles(ws, ref, routes, norm, systems)
     out = defaultdict(list)
     for pid, psr in sorted(ref.items()):
@@ -53,7 +56,8 @@ def gate(ws, corpus, systems=None, policy=None):
                 regions = json.load(open(f))["regions"]
                 stream = assemble.assemble(regions, psr, direction=r["direction"])
                 res = checks.run(regions, psr, stream, r,
-                                 doc=profiles.get((s, docs.get(pid))))
+                                 doc=profiles.get((s, docs.get(pid))),
+                                 line_text=texts.get(pid), lm=lm)
             d = decidemod.decide(res, r, policy=p, score=score)
             out[s].append({"page_id": pid, "doc": docs.get(pid), **d})
     return dict(out), p
