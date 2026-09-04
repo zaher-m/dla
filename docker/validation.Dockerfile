@@ -48,6 +48,9 @@ WORKDIR /app
 # path in the image and in the tree, so a threshold cannot silently differ.
 COPY harness/validation /app/harness/validation
 COPY config/checks.yaml /app/config/checks.yaml
+# The learned table score. Without it C6-02 silently falls back to the
+# structural test alone, which is the behaviour the model was fitted to replace.
+COPY config/table_model.json /app/config/table_model.json
 
 # The boundary check.  `core` is not in this image; if the package reaches for
 # it, this line fails and the build does too.

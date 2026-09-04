@@ -25,6 +25,9 @@ decide.py     deterministic veto, then a score -> accept | escalate | defer | re
 stage.py      the same over a workspace, writing decisions, queue, backlog, summary
 ```
 
+`tablefeat.py` scores how table-like a region is, from fourteen geometric
+features and weights fitted out of fold (`config/table_model.json`, 992 bytes,
+inference in numpy — the package carries no GPU and no deep-learning dependency).
 `orderlm.py` trains a character n-gram on the corpus's own text and scores how
 plausibly a reading order joins words — the only check that reads what the page
 says. `compare.py`, `psr_layout.py`, `document.py`, `tables.py` and `buckets.py`
@@ -95,7 +98,7 @@ One page, one task. Findings are grouped first, so four checks firing on one def
 | `C5-03` | MAJOR | A glyph line covered by two text regions is stored twice |
 | `C5-04` | BLOCK | Wholesale duplication: the page would be written to its store twice |
 | `C6-01` | BLOCK | A ruled table with no table region on it |
-| `C6-02` | MAJOR | A table region with nothing about the page to support it |
+| `C6-02` | BLOCK | A table region with nothing about the page to support it |
 | `C6-03` | ADV | A figure region that is really text: content sent to object storage |
 | `C6-05` | BLOCK | Body content classified as running furniture and dropped |
 | `C6-06` | BLOCK | Wholesale deletion: too much of the page routed to DISCARD |

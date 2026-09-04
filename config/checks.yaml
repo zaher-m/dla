@@ -338,6 +338,10 @@ checks:
   media_graphic_frac: 0.15
   media_max_text_frac: 0.18
   table_min_lines: 6
+  # C6-02 consults config/table_model.json below this score.  0.05 is the point
+  # where "certainly not a table" is wrong 0.7% of the time, measured out of fold
+  # and held out by document -- see docs/validation-experiments.md, E6.
+  table_score_floor: 0.05
   discard_body_lines: 3
   discard_line_rate: 0.15
 

@@ -176,6 +176,72 @@ comparing it to another derivation. C4-11 firing on nothing is the finding.
 
 ---
 
+## E6. A learned score for "is this actually a table"
+
+E1 found that reclassifying a third of a page's regions as tables is invisible
+(−0.2% lift), and E4 records two thresholds that failed at the same question.
+Both failures were of one quantity with one cut point, and the question is
+instant for a human eye. That is the shape of a problem whose decision boundary
+no single coordinate has.
+
+**Why not a convolutional model.** The shipped package is 314 MB with four
+dependencies and no GPU, and this machine's cuDNN returns bad convolutions on its
+architecture in any case. So: fourteen features computed from the PDF's own
+geometry, logistic regression, weights in `config/table_model.json` (992 bytes),
+inference a dot product in numpy. The deployable property is worth more than the
+last few points of accuracy.
+
+**Two independent weak-label sources, never mixed.**
+
+- *A, geometry*: a region spanned by ≥3 horizontal and ≥2 vertical rules is a
+  table; one with no rules, long words and a single left edge is not. 57
+  regions, 7 documents. High precision, blind to unruled tables by construction.
+- *B, consensus*: three or more systems agreeing on a region's class. 677
+  regions, 20 documents, 9% positive. Independent of A — it comes from models,
+  not from the PDF's strokes.
+
+Trained on B, **held out by document**, not by region: two regions of one page
+share a template, a font and a generator, and splitting them across a fold is how
+a model scores well on paper and fails on the next report.
+
+| | |
+|---|---|
+| out-of-fold AUC, grouped by document | **0.929** |
+| AUC on the independent geometric set | 1.000 |
+| mean score, ruled tables / rule-free prose | 0.86 / 0.00 |
+
+The geometric set is easy, but it is what rules out the model having merely
+memorised the consensus.
+
+**Only the negative direction is usable.**
+
+| Operating point | Result |
+|---|---|
+| score < 0.05, "certainly not a table" | wrong **0.7%** of the time |
+| score ≥ 0.98, "a table nothing labelled" | wrong 15% of the time |
+
+So C6-02 consults the model below 0.05 and the reverse use is not shipped, which
+is the same conclusion C6-01's history reached by another route.
+
+**A hypothesis that was wrong.** The feature expected to carry the result was
+factorisation — a table's lines should resolve into r rows by c columns with
+r·c near the line count, where prose gives r×1. It came out with a *negative*
+weight. The dominant feature is `left_edges`, the number of distinct positions
+lines start at: a table has one per column, prose has one.
+
+**Effect.** C6-02 promoted to blocking on evidence from both directions: it
+reports nothing on 424 real (system, page) pairs across four systems, and firing
+on nothing is also what an inert check does — so it was measured under injected
+defect, where it fires on 62% of pages against an 11% baseline. The E1 blind spot
+closes from −0.2% to **+49.6%**, with no change to any system's real block rate.
+
+**Limits.** Trained on Arabic financial and statistical reports. The consensus
+labels come from four systems that also produce the output this check judges,
+which is partly circular — mitigated by using only the extreme negative end,
+where the geometric test set agrees. Retrain for a different corpus.
+
+---
+
 ## E4. Negative results
 
 Kept because a documented dead end is cheaper than repeating it.

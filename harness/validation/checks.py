@@ -30,6 +30,7 @@ from validation import document as docmod
 from validation import lines as linesmod
 from validation import orderlm
 from validation import psr_layout as psrlayout
+from validation import tablefeat
 from validation import tables as tablemod
 from validation.buckets import bucket as to_bucket, TEXT, TABLE, MEDIA, DISCARD
 
@@ -79,6 +80,7 @@ DEFAULTS = {
     "media_graphic_frac": 0.15,
     "media_max_text_frac": 0.18,
     "table_min_lines": 6,
+    "table_score_floor": 0.05,
     "discard_body_lines": 3,
     "discard_line_rate": 0.15,
     "out_of_bounds": 0.02,
@@ -850,7 +852,7 @@ def c6_01(x):
 # correctly.  The failure it targets is severe (text sent to object storage
 # never reaches the index) so it is kept as a feature, but nothing has shown it
 # can identify that failure, and it must not gate a page until something does.
-@check("C6-02", MAJOR, "C6", needs=("psr",))
+@check("C6-02", BLOCK, "C6", needs=("psr",))
 def c6_02(x):
     """A table region with nothing about the page to support it.
 
@@ -859,12 +861,26 @@ def c6_02(x):
     where a missed table merely becomes prose in the text index.  Evidence is
     ruling lines, or rows made of several aligned cells.
 
-    Only the structural half of `tables.is_table_like` applies here.  That
-    function also bounds text density, but the band was fitted on grid
-    candidates -- a ruled area plus its padding -- and a model's box is drawn
-    tight around dense numerics, so the density test rejected five unmistakable
-    financial tables when it was carried across.  A calibration belongs to the
-    kind of box it was measured on.
+    Two thresholds failed at this before a model was fitted.  Text density does
+    not separate a table from a chart, and the structural half of
+    `tables.is_table_like` was fitted on grid candidates -- a ruled area plus its
+    padding -- so it rejected five unmistakable financial tables when carried
+    across to a model's tight box.  A calibration belongs to the kind of box it
+    was measured on, and no single quantity had the boundary.
+
+    Blocking on evidence from both directions.  It reports nothing on 424 real
+    (system, page) pairs across four systems, and firing on nothing is what an
+    inert check also does -- so it was also measured under injected defect:
+    reclassifying a third of a page's regions as tables makes it fire on 62% of
+    pages against an 11% baseline.  Silent because there is nothing to say, not
+    silent because it cannot speak.
+
+    So the evidence is a small learned score over fourteen geometric features
+    (validation/tablefeat.py).  Only its negative end is used: below 0.05 the
+    statement "this is certainly not a table" is wrong 0.7% of the time, while
+    the same model asserting a table it cannot see labelled is wrong 15-25% and
+    is not used at all.  The structural test is kept as a second opinion, so a
+    region must fail both to be reported.
     """
     bad = []
     for i, (r, b) in enumerate(zip(x["regions"], x["region_bucket"])):
@@ -876,10 +892,15 @@ def c6_02(x):
         ev = tablemod.evidence(r["bbox"], x["psr"])
         rows = ev["h_positions"] >= 3 or ev["n_rows"] >= 3
         cols = ev["v_positions"] >= 2 or ev["multi_cell_rows"] >= 2
-        if not (rows and cols):
+        if rows and cols:
+            continue
+        p = tablefeat.score(r["bbox"], x["psr"], x.get("line_text"))
+        # No model, or a region too small to feature: the structural test stands
+        # alone, as it did before the model existed.
+        if p is None or p < x["t"]["table_score_floor"]:
             bad.append(i)
     if bad:
-        return [_f("C6-02", MAJOR,
+        return [_f("C6-02", BLOCK,
                    f"{len(bad)} table region(s) sit on no ruling lines and no "
                    f"repeated column structure: their content would be stored "
                    f"as table rows", regions=bad, value=len(bad))]

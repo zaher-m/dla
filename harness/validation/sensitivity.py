@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from validation import assemble, checks, decide as decidemod  # noqa: E402
-from validation import mutate, psr_layout  # noqa: E402
+from validation import mutate, orderlm, psr_layout  # noqa: E402
 from validation.evaluate import routes_for  # noqa: E402
 
 
@@ -57,10 +57,10 @@ def baseline_layouts(ws, corpus, source, systems):
     return out
 
 
-def blocked(regions, psr, route, policy):
+def blocked(regions, psr, route, policy, line_text=None):
     """Would the gate stop this page, and on what?"""
     stream = assemble.assemble(regions, psr, direction=route["direction"])
-    res = checks.run(regions, psr, stream, route)
+    res = checks.run(regions, psr, stream, route, line_text=line_text)
     sev = {f["id"]: decidemod.severity(f["id"], f["severity"], policy)
            for f in res["findings"]}
     hits = {c for c, v in sev.items() if v == "BLOCK"}
@@ -77,11 +77,14 @@ def run(ws, corpus, source="psr", systems=None, seed=11, limit=None):
     if limit:
         pages = pages[:limit]
     policy = decidemod.load_policy()
+    ref_all = json.load(open(os.path.join(ws, "inventory",
+                                          "pdf_structural_reference.json")))
+    texts = orderlm.line_texts(ws, corpus, ref_all)
 
     base_block = 0
     base_hits = Counter()
     for pid, psr, r, regions in pages:
-        b, hits, _ = blocked(regions, psr, r, policy)
+        b, hits, _ = blocked(regions, psr, r, policy, texts.get(pid))
         base_block += b
         base_hits.update(hits)
 
@@ -97,7 +100,7 @@ def run(ws, corpus, source="psr", systems=None, seed=11, limit=None):
                     same += 1
                     continue
                 n += 1
-                b, hits, _ = blocked(mutated, psr, r, policy)
+                b, hits, _ = blocked(mutated, psr, r, policy, texts.get(pid))
                 caught += b
                 catchers.update(hits)
             rows.append({"mutation": name, "intensity": inten, "n": n,

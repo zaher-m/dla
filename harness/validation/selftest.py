@@ -17,7 +17,7 @@ import sys
 
 import fitz
 
-from validation import audit, checks, decide, orderlm, verdicts
+from validation import audit, checks, decide, orderlm, tablefeat, verdicts
 from validation.api import decide_page
 
 DPI_SCALE = 300 / 72.0
@@ -154,6 +154,15 @@ def run(tmp):
     assert orderlm.prosiness(["1.2 3.4 5.6", "7.8 9.0"]) == 0.0
     assert orderlm.prosiness(sents) == 1.0
     ok.append("order model prefers real continuations")
+
+    # The table model must be present and must load: a missing file makes C6-02
+    # fall back to the structural test the model exists to replace, silently.
+    tm = tablefeat.load_model()
+    assert tm is not None, "config/table_model.json is missing from this build"
+    assert list(tm["features"]) == list(tablefeat.NAMES), \
+        "the table model was fitted on different features"
+    assert len(tm["w"]) == len(tablefeat.NAMES)
+    ok.append("table model ships and matches its features")
     return ok, good
 
 
